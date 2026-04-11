@@ -1,0 +1,23 @@
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~
+
+# Build artifacts (pandoc / typst / latex)
+*.pdf
+*.aux
+*.log
+*.out
+*.toc
+build/
+dist/
+
+# Local notes that shouldn't be shared
+.scratch/
+notes-private/
+
+# Secrets
+.env
+.env.*
