@@ -1,4 +1,4 @@
-# Affine: An Incentivized Reinforcement Learning Environment for Open Reasoning
+# Affine: Incentivized Reinforcement Learning Environment for Open Reasoning
 
 ---
 
