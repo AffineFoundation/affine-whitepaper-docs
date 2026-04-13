@@ -1,0 +1,52 @@
+---
+title: "9.1 Stable Benchmarks"
+---
+
+import Table from '../../../components/Table.astro';
+
+**Reliable cross-model comparisons.** Two benchmarks provide reliable, fully completed cross-model comparisons. These are classified as "stable" because all models completed all tasks under identical conditions.
+
+The following table shows the stable benchmark results. Note how Leary CX and Leary CS consistently outperform or match the base, while Axon1 M19 shows a more mixed profile.
+
+<Table>
+
+| Model | MCP-Bench Tool Call Success | MCP-Bench Task Completion | MemoryAgentBench F1 |
+|---|---|---|---|
+| **Base (Qwen3-32B-TEE)** | 98.01% | 6.78 | 6.21 |
+| **Axon1 M19** | 87.14% | 5.86 | 9.30 |
+| **Leary CX** | **98.21%** | **7.71** | **9.37** |
+| **Leary CS** | 96.95% | 7.93 | 8.73 |
+
+</Table>
+
+
+> **Legend:** Bold = best score per benchmark.
+
+---
+
+## MCP-Bench Results
+
+MCP-Bench is currently the strongest tool-use benchmark in the suite, measuring three dimensions on a 10-point scale:
+
+- **Task completion** -- end-to-end success
+- **Tool selection** -- choosing the right tool for each step
+- **Planning quality** -- strategic reasoning about multi-step tool use
+
+Key findings:
+
+- **Leary CX and Leary CS** form the top tier across all three dimensions:
+  - Leary CS leads on task completion (7.93 vs. base 6.78) and tool selection (8.24 vs. base 7.76)
+  - Leary CX delivers comparable quality with the best runtime (86.8s vs. base 193.9s -- a **2.2x speedup**)
+- Both miner models improve planning scores (6.94-6.95 vs. base 6.69)
+
+> **Key implication:** The base model retains near-perfect tool-call hygiene (100% valid tool names, 98% tool-call success), suggesting that Affine training improves higher-order task execution -- planning, selection, completion -- without degrading low-level tool-calling mechanics.
+
+## MemoryAgentBench Results
+
+MemoryAgentBench evaluates retrieval-focused long-context QA across 300 samples. Key findings:
+
+- **All three** miner models outperform the base.
+- Leary CX achieves F1 9.37 versus base 6.21 (**+51% relative**).
+- Leary CX also runs **6x faster** (2.6s vs. 16.1s per query).
+
+> **Why this matters:** This suggests that Affine training improves both answer quality and inference efficiency on memory-retrieval tasks.

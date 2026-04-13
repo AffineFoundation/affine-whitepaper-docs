@@ -1,0 +1,9 @@
+---
+title: "10.3 Inference Infrastructure Independence"
+---
+
+**Reducing external dependencies.** The current inference layer relies on Chutes (Bittensor Subnet 64) as a third-party provider. Moving toward Affine-operated or hybrid GPU clusters would give the system direct control over inference scheduling, latency, and cost.
+
+The Affinetes architecture is designed to make this transition straightforward — existing SDK integrations demonstrate that switching inference backends requires only deploying models to a new endpoint and updating the base URL. No environment code, scoring logic, or orchestration changes are needed.
+
+Self-operated infrastructure could also enable tighter integration between the DISTILL teacher pipeline and the inference layer, reducing cross-network latency for logprob collection.

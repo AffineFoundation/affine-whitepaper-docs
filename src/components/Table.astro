@@ -1,0 +1,49 @@
+---
+// Table wrapper component — provides proper sizing and horizontal scroll for wide tables
+---
+
+<div class="table-container">
+  <slot />
+</div>
+
+<style>
+  .table-container {
+    width: 100%;
+    overflow-x: auto;
+    border-radius: 8px;
+    margin: 1rem 0;
+    scrollbar-width: thin;
+    -ms-overflow-style: auto;
+  }
+
+  .table-container::-webkit-scrollbar {
+    display: block !important;
+    height: 6px;
+  }
+
+  .table-container::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 3px;
+  }
+
+  .table-container::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+  }
+
+  .table-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .table-container :global(table) {
+    display: table !important;
+    width: auto !important;
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+    margin: 0;
+  }
+</style>

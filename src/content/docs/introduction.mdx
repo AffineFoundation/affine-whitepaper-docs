@@ -1,0 +1,89 @@
+---
+title: "2. Introduction"
+---
+
+## The Static Benchmark Paradigm
+
+The dominant paradigm for evaluating large language models relies on static benchmark suites: fixed collections of question-answer pairs scored by exact match, multiple choice accuracy, or automated code execution. Benchmarks such as MMLU, HumanEval, and GSM8K have driven rapid progress in model development, but they share structural limitations that become acute as the field moves toward agentic systems — models that must act, plan, use tools, and interact with dynamic environments over extended horizons.
+
+These structural limitations manifest in three key dimensions: saturation, agentic capability gaps, and the inability to support training loops. The subsections below address each in turn.
+
+### Static Benchmarks Saturate
+
+A fixed test set is vulnerable to contamination through:
+
+- Training data overlap
+- Deliberate or accidental memorization
+- Benchmark-specific optimization
+
+SWE-bench Pro, one of the most rigorous software engineering benchmarks, contains approximately 2,300 instances. Once a model has been trained on or tuned against a dataset of this scale, marginal score improvements may reflect overfitting rather than genuine capability gains. The problem compounds in open networks where model weights are public: any participant can download a leading model, make superficial modifications, and claim credit for equivalent performance.
+
+### Static Benchmarks Miss Agentic Capability
+
+Recent interactive benchmarks have begun to address this gap:
+
+- **WebArena** for browser navigation
+- **AgentBench** for multi-domain tool use
+- **Mind2Web** for web interaction trajectories
+- **ToolBench** for API orchestration
+
+However, most rely on fixed website snapshots, human-authored trajectories, or small task pools that are themselves subject to saturation. A model that scores well on closed-form reasoning may fail at multi-step tool orchestration, real-time web navigation, or long-horizon memory management under budget pressure.
+
+> **Key insight:** What is needed is not merely interactive evaluation, but interactive evaluation with a *renewable* task supply.
+
+### Fixed Task Sets Cannot Serve as Training Substrates
+
+For reinforcement learning to work, the training environment must supply a continuous stream of diverse tasks. Even SWE-bench Pro's 2,300 instances are exhausted within a handful of training epochs. What is needed is not a larger static dataset but a generative process that produces fresh, validated tasks continuously — tasks diverse enough to prevent overfitting and structured enough to provide meaningful reward signals.
+
+### Infrastructure Is an Underappreciated Bottleneck
+
+Even when interactive environments exist, deploying them at scale introduces engineering challenges that benchmark papers rarely address:
+
+- Containerization
+- Reproducibility across machines
+- Concurrent evaluation of multiple models
+- Secure communication
+- Efficient resource management
+
+Without a robust infrastructure layer, interactive environments remain research prototypes rather than operational systems.
+
+## Affine's System-Level Approach
+
+Building on the limitations outlined above, Affine addresses them through a system-level approach built on **Bittensor**, a decentralized network in which independent participants (miners) compete to provide useful computational work and are rewarded with token emissions proportional to their demonstrated quality. Bittensor organizes work into subnets, each governed by validators who score miner contributions and set on-chain weights.
+
+Affine operates as Subnet 120, directing this incentive structure toward a single concrete objective: driving miners to perform reinforcement-learning post-training inside Affine's own environments until their models surpass the base Qwen3-32B. The system does not prescribe an RL recipe, dataset, or training pipeline; instead, it exposes a renewable, training-friendly environment suite with structured reward signals, then lets the on-chain incentive — emissions allocated proportionally to demonstrated cross-environment capability — pull miners toward continuous post-training. The result is a closed loop in which the same environments that score a model are the ones miners optimize against to build the next, stronger model.
+
+The system combines five contributions:
+
+1. **A decentralized evaluation and scoring mechanism** that incentivizes genuine model improvement while resisting plagiarism, overfitting, and gaming. The mechanism uses:
+   - Pareto dominance filtering with statistical significance thresholds
+   - ELO-based temporal ratings
+   - A two-signal anti-copy detector that analyzes model internals
+
+   Miners submit models that are evaluated across the full environment suite, with emissions allocated proportionally to demonstrated capability.
+
+2. **A container-orchestration infrastructure layer** (Affinetes) that packages evaluation environments as reproducible, isolated Docker services with:
+   - Automatic lifecycle management
+   - Secure SSH-tunneled communication
+   - Multi-instance load balancing
+
+   Environment developers write only business logic; the framework handles deployment, scaling, and inter-process communication. This separation allows environments to be developed independently and deployed across distributed clusters.
+
+3. **A family of interactive evaluation environments** targeting capabilities that static benchmarks miss:
+   - **SWE-Infinite** — a continuously expanding software engineering environment that auto-discovers repositories, generates validated task instances across multiple programming languages, and applies multi-layer quality filtering, producing a renewable task supply that resists saturation.
+   - **LiveWeb Arena** — a real-time web interaction environment where agents navigate live websites (financial data, weather services, cryptocurrency exchanges, blockchain explorers), with a combinatorial task space exceeding 197 million unique task identifiers and dynamic ground truth that changes with real-world data.
+   - **MemoryGym** — a memory management benchmark that tests selective storage, incremental updates, and reasoning under write-budget constraints, using correction events that dynamically alter world state and defeat shortcut strategies through nine verified simulation protocols.
+   - **NavWorld** — a tool-mediated travel planning environment requiring multi-step tool orchestration (POI search, navigation, weather, flight and train queries), with 10,000+ renewable tasks generated from city-type-difficulty combinations and weekly salt rotation.
+   - **GAME (OpenSpiel)** — a strategic reasoning environment built on DeepMind's OpenSpiel framework, spanning 22 games organized into seven quality tiers and selected for trajectory diversity (minimum 100 distinct trajectories per configuration), from imperfect-information card games to deterministic board games with effectively infinite game trees.
+
+4. **Training-friendly design choices** throughout the system:
+   - Deterministic seeding for reproducibility
+   - Structured reward signals for policy learning (from dense per-step shaping in LiveWeb and NavWorld to per-task outcomes in SWE-Infinite and per-position distributional signals in DISTILL)
+   - Geometric mean scoring that forces broad-spectrum competence
+   - Task rotation mechanisms that prevent environmental overfitting
+
+5. **Empirical evidence that the post-training loop works:** Affine-trained models outperform the base Qwen3-32B on external benchmarks not used in training, including improvements on:
+   - Browsing comprehension
+   - Tool-use execution
+   - Memory retrieval
+   - Software engineering tasks — with SWE-rebench scores rising from zero (base) to 12.28 (best miner)

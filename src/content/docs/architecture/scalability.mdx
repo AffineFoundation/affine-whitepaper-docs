@@ -1,0 +1,15 @@
+---
+title: "4.7 Scalability and Reproducibility"
+---
+
+The architecture provides several properties essential for a production evaluation system.
+
+**Reproducibility.** Environments accept deterministic seeds, and Affinetes ensures identical container images across deployments. Given the same seed, task ID, and model, an environment produces identical evaluation trajectories — required for both fair scoring and training reproducibility.
+
+**Horizontal scalability.** The system scales along three orthogonal dimensions — executor workers, environment instances, and inference replicas — each independently tunable without affecting the others.
+
+**Fault tolerance.** Worker processes are monitored and auto-restarted. Environment containers are health-checked and reconnected. The task pool uses TTL-based expiration to prevent abandoned tasks from accumulating.
+
+**Security.** Environment containers are never directly exposed to the network. Sample submissions are cryptographically signed to ensure only authorized executors can submit results. The fixed model architecture constraint prevents inference-time attacks that exploit model heterogeneity.
+
+**Environment-agnostic design.** The infrastructure handles deployment, scaling, and communication without constraining what evaluation logic runs inside each container — enabling the environment suite described in [Section 5](/environments/overview/).

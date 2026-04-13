@@ -1,0 +1,118 @@
+---
+title: "5.1 SWE-Infinite: Renewable Software Engineering Tasks"
+---
+
+**Capability target.** SWE-Infinite evaluates a model's ability to understand, diagnose, and repair real software bugs — the core loop of professional software engineering. Unlike simple code generation benchmarks that test function-level synthesis in isolation, SWE-Infinite presents models with:
+
+- Full repository contexts
+- Real test suites
+- Genuine bug-fixing patches extracted from merged pull requests
+
+## Why Existing Benchmarks Are Insufficient
+
+SWE-bench Pro, the most rigorous existing software engineering benchmark, contains approximately 2,300 instances drawn from a fixed set of roughly 340 repositories. This fixed dataset creates three problems for ongoing evaluation and training:
+
+1. **Saturation** — A finite task set is exhausted within a few training epochs. Models can overfit to the specific patterns, repositories, and failure modes in the dataset without developing generalizable debugging capability.
+2. **Contamination** — In an open network where model weights are public, training data overlap with the evaluation set is difficult to prevent and impossible to verify.
+3. **Limited language coverage** — SWE-bench Pro focuses primarily on Python, leaving software engineering capability in other languages unmeasured.
+
+**Synthetic alternatives fall short.** Synthetic dataset generation approaches (e.g., SWE-smith-style bug injection, where working code is deliberately modified to introduce faults and test cases are generated to detect them) address the scale problem but introduce an artificiality gap:
+
+- Injected bugs may not reflect the distribution of real software defects
+- Synthetic test suites may not exercise the same code paths as developer-written tests
+
+SWE-Infinite takes a different path: rather than synthesizing artificial bugs, it extracts real bugs from real merged pull requests with real test suites, then continuously discovers new repositories to maintain a renewable supply. This preserves the ecological validity of the task distribution while solving the scale problem.
+
+## Environment Design
+
+The SWE-Infinite pipeline operates in four stages, each with explicit quality targets. The stages are designed as a progressive quality funnel — each one narrows the candidate pool to ensure that only well-validated task instances reach the final output.
+
+**Stage 0: Repository and PR Discovery.** The system continuously discovers candidate repositories through two channels:
+
+- **GitHub Search API queries** — segmented by star ranges (in steps of 100, 1,000, and 10,000 to overcome the API's 1,000-result limit)
+- **Package registry top-download lists** — e.g., PyPI's top 2,000 packages
+
+Discovered repositories are filtered by quantitative admission criteria:
+
+- Minimum 500 stars
+- At least 50 forks
+- Active CI configuration
+- Activity within the past 365 days
+
+Pull requests within qualifying repositories are further filtered:
+
+- 2--8 files changed
+- 5--500 lines modified
+- Merged within 365 days
+- Authored by a human (not a bot)
+
+A semantic filter based on PR labels and title keywords retains bug fixes, feature additions, and regression repairs while rejecting refactoring, documentation, and performance-only changes. Approximately 40% of candidate PRs survive all Stage 0 filters.
+
+**Stage 1: Environment Building (target: 80% pass rate).** For each surviving PR, the system generates a Dockerfile using:
+
+1. Heuristic language-version detection — checking `.nvmrc`, `pyproject.toml`, GitHub Actions workflows, and other configuration files
+2. Build-side dependency resolution — parsing PEP 735 and PEP 508 dependency specifications before building
+
+Supported languages include:
+
+- Python (3.6--3.12)
+- JavaScript/TypeScript (Node 16--22)
+- Go (1.13--1.23)
+- Rust (1.40--1.88)
+- Ruby (2.5--3.3)
+
+Built images are pushed to a public Docker registry for cross-machine reuse.
+
+**Stage 2: Test Validation (target: 90% pass rate).** The system applies a patch-splitting algorithm that separates each PR's diff into a `test_patch` (test file changes) and a `solution_patch` (source file changes) using filename-pattern matching. Validation proceeds in three steps:
+
+1. Apply only the test patch to the base commit and run tests — new tests should fail against old code
+2. Apply the full patch and run tests — all tests should pass
+3. Identify the FAIL_TO_PASS set — tests that failed in step 1 but passed in step 2
+
+A task instance must contain at least one FAIL_TO_PASS test to be accepted.
+
+**Stage 3: Patch Quality Verification (target: 85% pass rate).** The system verifies that the solution patch contains actual source code changes (not just test modifications).
+
+**End-to-end yield.** The cumulative pass rate across the four stages is approximately 60% (0.80 x 0.90 x 0.85). Applied to a continuously growing input stream, the pipeline produces >1,200 validated tasks/day on a 5-machine cluster.
+
+## Task Generation and Renewability
+
+Building on the four-stage pipeline above, SWE-Infinite maintains a renewable task supply through continuous operation rather than running against a fixed list. Key mechanisms include:
+
+- **Cursor-based daily advancement** — processes merged PRs one day at a time, with persistent state stored in Cloudflare R2
+- **Independent language cursors** — each supported language maintains its own processing cursor
+- **DynamoDB deduplication** — tracks processed tasks to prevent cross-machine duplication
+- **Graduated retry policy:**
+  - Build failures: retry after 30 days (allowing Dockerfile generator improvements to take effect)
+  - Transient errors: retry after 7 days
+  - Semantic rejections and tasks with no FAIL_TO_PASS tests: permanently skipped
+
+**Processing throughput.** At a processing rate exceeding 10 tasks per hour per machine, a cluster of five machines produces over 1,200 validated task instances per day — a rate that far exceeds the consumption rate of any single evaluation round.
+
+## Training Utility
+
+The patch-splitting strategy described in Stage 2 directly enables reinforcement learning:
+
+- **FAIL_TO_PASS tests** provide a verifiable reward signal — does the model's patch make the failing tests pass?
+- **PASS_TO_PASS tests** penalize regressions — does the patch break existing functionality?
+
+The output format is fully compatible with SWE-bench Pro, allowing integration into existing training pipelines via a unified task loader.
+
+## Key Advantages
+
+SWE-Infinite offers five structural advantages over prior software engineering benchmarks:
+
+- **Unbounded supply** — continuous discovery from the full GitHub ecosystem, not a fixed repository list
+- **Multi-language** — five language families with language-specific Dockerfile generation and dependency resolution
+- **Quality-controlled** — four-stage validation with explicit pass rate targets and monitoring
+- **Format-compatible** — drop-in replacement for SWE-bench Pro instances in existing evaluation harnesses
+- **Training-ready** — clean FAIL_TO_PASS / PASS_TO_PASS separation enables direct use as RL reward
+
+## Current Limitations
+
+Production monitoring (Cycle 036, 2026-03-15) reveals uneven quality across languages:
+
+- Go, Rust, Ruby, and JavaScript achieve near-100% smoke test pass rates
+- Python achieves only 3.7% — primarily due to deep conftest dependency chains in large frameworks (Django, Home Assistant) that defeat the current Dockerfile generator's dependency resolution
+
+> **Planned improvement:** LLM-assisted fallback generation for complex Python build configurations remains a planned enhancement.

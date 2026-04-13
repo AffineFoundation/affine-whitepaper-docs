@@ -1,0 +1,26 @@
+{
+  "name": "affine-whitepaper-docs",
+  "type": "module",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "convert": "node scripts/convert-whitepaper.mjs"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "0.34.3",
+    "astro": "5.6.1",
+    "rehype-mermaid": "^3.0.0",
+    "sharp": "^0.32.5"
+  },
+  "devDependencies": {
+    "playwright": "^1.52.0"
+  },
+  "overrides": {
+    "zod": "3.25.28",
+    "@astrojs/sitemap": "3.4.0"
+  }
+}

@@ -1,0 +1,24 @@
+---
+title: "4.3 The Inference Layer: Chutes and Beyond"
+---
+
+**Serverless GPU inference.** With environments handled by Affinetes ([Section 4.2](/architecture/affinetes/)), the next architectural concern is how models are served. The current inference layer is **Chutes** (Bittensor Subnet 64), a serverless GPU inference platform. Miners deploy vLLM-backed model endpoints on Chutes, which exposes them as OpenAI-compatible HTTP APIs at `https://llm.chutes.ai/v1`. Environments invoke models by issuing standard chat completion requests to this endpoint, passing the miner's model identifier and API key.
+
+**Clean separation.** The result is clean separation: environments contain no model-loading code, GPU management, or inference optimization. They issue HTTP requests and receive text responses. The inference layer handles:
+
+- Batching
+- Quantization (where permitted)
+- GPU scheduling
+- Auto-scaling
+
+**Why this separation matters.** Three properties follow from isolating inference behind an HTTP boundary:
+
+1. **Resource allocation** — Environments are CPU-bound (running Docker containers, executing scoring logic, managing state); inference is GPU-bound (running forward passes through large neural networks). Separating them allows each layer to run on appropriate hardware.
+
+2. **Independent scaling** — The number of environment instances and the number of inference replicas can scale independently based on their respective bottlenecks.
+
+3. **Backend substitution** — The same environment code works with any OpenAI-compatible inference endpoint. Basilica SDK examples demonstrate this with vLLM on Basilica GPU pods; Targon SDK examples demonstrate it with Targon's serverless function deployment, which provides automatic HTTPS URL exposure without manual port management.
+
+> **Key implication:** Because inference is behind a standard HTTP interface, swapping the entire GPU backend requires changing only a base URL — no environment or scoring code is affected.
+
+**Future evolution.** The Basilica and Targon SDK integrations in the Affinetes examples directory demonstrate that the system already supports multiple inference backends. The path toward Affine-operated inference infrastructure is detailed in Section 7.3.

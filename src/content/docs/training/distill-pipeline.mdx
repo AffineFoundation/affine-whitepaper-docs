@@ -1,0 +1,52 @@
+---
+title: "8.1 The DISTILL Training Pipeline"
+---
+
+## Why Distributional Alignment Matters
+
+Interactive environments provide rich task-level reward signals, but they share a limitation: two models can achieve identical task scores through very different internal strategies -- one through robust understanding, another through brittle pattern matching. DISTILL evaluates **distributional alignment**: how closely a student model's internal token-level predictions match those of a stronger teacher model.
+
+> **Why this matters:** This targets the quality of the model's learned representations, not merely its behavioral outputs. See [Section 5.6](/environments/distill/) for the full environment specification.
+
+## Three-Stage Architecture
+
+DISTILL operates through three stages that form a pipeline from teacher generation to student evaluation:
+
+1. **Teacher Worker** -- An independent teacher worker process:
+   - Samples prompts from a Corpus-Eval source (backed by `karpathy/climbmix-400b-shuffle`)
+   - Generates 512-token continuations with top-20 logprob distributions using the teacher model (currently Qwen3-235B)
+   - Uploads rollouts to a private R2 bucket
+
+2. **Teacher Mover** -- A teacher mover process periodically promotes a random subset (default: 3 per rotation, hourly) from private to a public R2 bucket with:
+   - Sequential numbering
+   - Metadata counter updates
+
+3. **DISTILL Environment** -- The evaluation stage:
+   - Loads the teacher rollout
+   - Performs a student forward pass with `echo=True` and `logprobs=20`
+   - Computes per-position KL divergence
+   - Returns the final score
+
+The scoring formula translates KL divergence into a continuous quality signal:
+
+> **What this means:** every incremental improvement in distributional alignment produces a detectable score increase -- unlike binary task rewards where small improvements may not cross the pass threshold.
+
+```
+score = exp(-avg_kl)
+```
+
+Where:
+
+- `avg_kl` -- the average per-position KL divergence between student and teacher logprob distributions
+
+## Self-Expanding Task Pool
+
+The DISTILL sampling configuration auto-expands its task range by fetching the latest `completed_up_to` counter from the public R2 metadata endpoint. This ensures the evaluation pool grows continuously without code changes. Promotion cadence is operator-tunable from a single DynamoDB entry.
+
+## Future Evolution
+
+Three planned extensions would build on the existing infrastructure:
+
+1. **Automated teacher selection** -- the best-performing miner is promoted to teacher when it surpasses the current teacher, creating a self-improving distillation loop
+2. **Multi-teacher ensembling** -- blending logprob distributions from multiple models to produce a more robust distributional target
+3. **Corpus diversification** -- extending beyond general-purpose natural language to code, scientific text, and multi-lingual data

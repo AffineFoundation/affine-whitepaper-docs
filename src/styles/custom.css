@@ -1,0 +1,573 @@
+/* ==========================================================================
+   Affine Whitepaper Docs — Design System CSS
+   Dark-only theme based on Affine Design System Specification
+   ========================================================================== */
+
+/* === Color System & Design Tokens === */
+
+:root,
+:root[data-theme="dark"] {
+  /* Accent — Interactive Blue */
+  --sl-color-accent-low: rgba(90, 200, 250, 0.1);
+  --sl-color-accent: #5AC8FA;
+  --sl-color-accent-high: #7DD8FF;
+
+  /* Backgrounds — Dark Tonal Surfaces */
+  --sl-color-bg: #1C1C1C;
+  --sl-color-bg-nav: #1F1F1F;
+  --sl-color-bg-sidebar: #1F1F1F;
+  --sl-color-bg-code: #1F1F1F;
+  --sl-color-bg-inline-code: rgba(255, 255, 255, 0.06);
+  --sl-color-bg-accent: rgba(90, 200, 250, 0.1);
+
+  /* Text Hierarchy */
+  --sl-color-text: #E5E5E5;
+  --sl-color-text-accent: #5AC8FA;
+  --sl-color-white: #E5E5E5;
+  --sl-color-gray-1: #E5E5E5;
+  --sl-color-gray-2: #A1A1A1;
+  --sl-color-gray-3: #686868;
+  --sl-color-gray-4: #484848;
+  --sl-color-gray-5: #363636;
+  --sl-color-gray-6: #2A2A2A;
+  --sl-color-gray-7: #1C1C1C;
+  --sl-color-black: #181818;
+
+  /* Borders */
+  --sl-color-hairline-shade: rgba(255, 255, 255, 0.06);
+  --sl-color-hairline-light: rgba(255, 255, 255, 0.04);
+
+  /* Typography — Space Grotesk (display) + Space Mono (code/labels) */
+  --sl-font: 'Space Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --sl-font-system: 'Space Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --sl-font-system-mono: 'Space Mono', 'IBM Plex Mono', monospace;
+
+  /* Semantic Colors (Affine neon accents) */
+  --affine-success: #44FF9A;
+  --affine-danger: #FF4747;
+  --affine-activity: #FF9B4E;
+  --affine-warning: #F5E663;
+  --affine-primary: #5AC8FA;
+
+  /* Shadows */
+  --affine-shadow-card: 0 2px 10px rgba(0, 0, 0, 0.45);
+  --affine-shadow-dropdown: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+/* === Global Typography === */
+
+body {
+  font-family: var(--sl-font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: #E5E5E5;
+  letter-spacing: -0.15px;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--sl-font);
+  font-weight: 300;
+  letter-spacing: -0.03em;
+}
+
+h2, h3, h4 {
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+code, pre {
+  font-family: var(--sl-font-system-mono);
+}
+
+/* === Hide Theme Toggle (dark-only) === */
+
+starlight-theme-select,
+.sl-theme-select {
+  display: none !important;
+}
+
+/* === Site Title / Nav Branding === */
+
+/* Site title — Inter medium, matching Affine dashboard nav branding */
+.site-title {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 500 !important;
+  font-size: 20px !important;
+  letter-spacing: -0.02em !important;
+  color: #E5E5E5 !important;
+  line-height: 1;
+}
+
+a.site-title.sl-flex {
+  gap: 0.625rem !important;
+  align-items: center;
+}
+
+/* Logo sizing */
+.site-title.sl-flex img {
+  height: 32px !important;
+  width: 32px !important;
+  border-radius: 6px;
+}
+
+/* === Sidebar Styling === */
+
+/* Sidebar group labels — Space Mono, uppercase, spaced */
+.sidebar summary,
+.sidebar h2 {
+  font-family: 'Space Mono', 'IBM Plex Mono', monospace !important;
+  font-size: 11px !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+  color: #999999 !important;
+}
+
+/* Sidebar nav links — Space Grotesk, light */
+.sidebar nav a {
+  font-family: 'Space Grotesk', 'Inter', sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  letter-spacing: -0.01em !important;
+  color: #A1A1A1 !important;
+  transition: all 200ms ease;
+  border-radius: 6px;
+}
+
+.sidebar nav a:hover {
+  color: #E5E5E5 !important;
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Active sidebar link */
+.sidebar a[aria-current="page"],
+.sidebar a[aria-current="true"] {
+  background-color: rgba(90, 200, 250, 0.12) !important;
+  color: #5AC8FA !important;
+  font-weight: 500 !important;
+}
+
+/* === Content Area === */
+
+/* Code blocks */
+pre:not(.mermaid) {
+  background-color: #1F1F1F !important;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  box-shadow: var(--affine-shadow-card);
+  color: #F0F0F0 !important;
+  overflow-x: auto !important;
+  scrollbar-width: thin !important;
+  -ms-overflow-style: auto !important;
+}
+
+pre:not(.mermaid)::-webkit-scrollbar {
+  display: block !important;
+  height: 6px;
+}
+
+pre:not(.mermaid)::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 3px;
+}
+
+pre:not(.mermaid)::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+}
+
+pre:not(.mermaid)::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Default code text color — only applies when Shiki doesn't add syntax colors */
+pre:not(.mermaid) code {
+  color: #F0F0F0 !important;
+}
+
+/* Let Shiki syntax highlighting colors take priority */
+pre:not(.mermaid) code span[style] {
+  color: unset;
+}
+
+/* Inline code */
+:not(pre) > code {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+  border-radius: 4px;
+  padding: 0.15em 0.35em;
+  font-size: 0.9em;
+}
+
+/* Links */
+.sl-markdown-content a {
+  color: #5AC8FA;
+  text-decoration: none;
+  transition: color 200ms ease;
+}
+
+.sl-markdown-content a:hover {
+  color: #7DD8FF;
+}
+
+/* Tables — base styles (layout handled by Table.astro component) */
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+table th {
+  background-color: #242424 !important;
+  font-family: 'Space Mono', 'IBM Plex Mono', monospace !important;
+  font-size: 11px !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+  color: #999999 !important;
+  padding: 12px 20px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+  text-align: left;
+}
+
+table td {
+  font-size: 12px;
+  font-weight: 400;
+  padding: 12px 20px !important;
+  color: #E5E5E5;
+  letter-spacing: -0.15px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+}
+
+
+table tr:hover td {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+table,
+table th,
+table td {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* Blockquotes */
+blockquote {
+  border-left-color: rgba(90, 200, 250, 0.4) !important;
+  background-color: rgba(90, 200, 250, 0.04);
+  border-radius: 0 8px 8px 0;
+  padding: 1rem 1.25rem;
+}
+
+blockquote p {
+  color: #A1A1A1;
+}
+
+/* Aside/Note components */
+.starlight-aside {
+  border-radius: 8px;
+  border-color: rgba(90, 200, 250, 0.3);
+  background-color: rgba(90, 200, 250, 0.06);
+}
+
+/* Horizontal rules */
+hr {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* === Header === */
+
+header.header {
+  background-color: #1C1C1C;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Social icon links in header */
+.social-icons a {
+  color: #A1A1A1;
+  transition: color 200ms ease;
+}
+
+.social-icons a:hover {
+  color: #E5E5E5;
+}
+
+/* === Right Sidebar (Table of Contents) === */
+
+.right-sidebar {
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+}
+
+.right-sidebar a {
+  font-size: 12px;
+  letter-spacing: -0.01em;
+  color: #A1A1A1;
+  transition: color 200ms ease;
+}
+
+.right-sidebar a:hover {
+  color: #E5E5E5;
+}
+
+.right-sidebar a[aria-current="true"] {
+  color: #5AC8FA;
+}
+
+/* === Mermaid Diagram Styles === */
+
+.mermaid-wrapper {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+}
+
+.mermaid-expand-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: #1F1F1F;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 0.25rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 200ms ease, background-color 200ms ease, border-color 200ms ease;
+  z-index: 10;
+  color: #A1A1A1;
+}
+
+.mermaid-wrapper:hover .mermaid-expand-btn {
+  opacity: 1;
+}
+
+.mermaid-expand-btn:hover {
+  background: rgba(90, 200, 250, 0.1);
+  border-color: #5AC8FA;
+  color: #5AC8FA;
+}
+
+.mermaid-expand-btn:active {
+  transform: scale(0.95);
+}
+
+pre.mermaid:not(.mermaid-modal-diagram) {
+  cursor: pointer;
+  transition: transform 200ms ease;
+}
+
+pre.mermaid:not(.mermaid-modal-diagram):hover {
+  transform: scale(1.01);
+}
+
+/* Mermaid Modal */
+.mermaid-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.9);
+  z-index: 9999;
+  padding: 2rem;
+  overflow: auto;
+  backdrop-filter: blur(4px);
+}
+
+.mermaid-modal.active {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mermaid-modal-content {
+  position: relative;
+  background: #1F1F1F;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  width: 90vw;
+  height: 90vh;
+  max-width: 1400px;
+  max-height: 900px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--affine-shadow-dropdown);
+  animation: modalFadeIn 0.2s ease;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.mermaid-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: #242424;
+  border-radius: 12px 12px 0 0;
+}
+
+.mermaid-modal-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mermaid-control-btn {
+  background: #1F1F1F;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 0.375rem;
+  cursor: pointer;
+  color: #A1A1A1;
+  transition: all 200ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mermaid-control-btn:hover {
+  background: rgba(90, 200, 250, 0.1);
+  border-color: #5AC8FA;
+  color: #5AC8FA;
+}
+
+.mermaid-control-btn:active {
+  transform: scale(0.95);
+}
+
+.mermaid-zoom-level {
+  font-family: var(--sl-font-system-mono);
+  font-size: 12px;
+  color: #A1A1A1;
+  min-width: 3.5rem;
+  text-align: center;
+  user-select: none;
+  letter-spacing: -0.15px;
+}
+
+.mermaid-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 1.75rem;
+  line-height: 1;
+  cursor: pointer;
+  color: #A1A1A1;
+  padding: 0 0.375rem;
+  border-radius: 6px;
+  transition: all 200ms ease;
+}
+
+.mermaid-modal-close:hover {
+  background: rgba(90, 200, 250, 0.1);
+  color: #5AC8FA;
+}
+
+.mermaid-modal-body {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+  background: #1C1C1C;
+  border-radius: 0 0 12px 12px;
+}
+
+.mermaid-diagram-container {
+  position: relative;
+  display: inline-block;
+  min-width: 100%;
+  min-height: 100%;
+  padding: 2rem;
+  cursor: grab;
+  transform-origin: center center;
+  transition: transform 200ms ease;
+}
+
+.mermaid-diagram-container:active {
+  cursor: grabbing;
+}
+
+.mermaid-modal-diagram {
+  margin: 0;
+  cursor: default !important;
+  transform: none !important;
+}
+
+.mermaid-modal-diagram svg {
+  display: block;
+  margin: 0 auto;
+}
+
+.mermaid-modal-body .mermaid-expand-btn {
+  display: none;
+}
+
+/* Modal scrollbar */
+.mermaid-modal-body::-webkit-scrollbar {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.mermaid-modal-body::-webkit-scrollbar-track {
+  background: #1F1F1F;
+  border-radius: 0.375rem;
+}
+
+.mermaid-modal-body::-webkit-scrollbar-thumb {
+  background: #363636;
+  border-radius: 0.375rem;
+  border: 2px solid #1F1F1F;
+}
+
+.mermaid-modal-body::-webkit-scrollbar-thumb:hover {
+  background: #A1A1A1;
+}
+
+/* === Mobile Responsiveness === */
+
+@media (max-width: 768px) {
+  .mermaid-modal {
+    padding: 0.5rem;
+  }
+
+  .mermaid-modal-content {
+    width: 95vw;
+    height: 95vh;
+  }
+
+  .mermaid-modal-header {
+    padding: 0.75rem 1rem;
+  }
+
+  .mermaid-control-btn {
+    padding: 0.25rem;
+  }
+
+  .mermaid-zoom-level {
+    font-size: 11px;
+    min-width: 3rem;
+  }
+
+  .mermaid-diagram-container {
+    padding: 1rem;
+  }
+
+  .mermaid-expand-btn {
+    opacity: 1;
+  }
+}
+
+/* === Scrollbar Behavior (Affine: hidden scrollbars globally) === */
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html, body {
+  overscroll-behavior: none;
+}
+

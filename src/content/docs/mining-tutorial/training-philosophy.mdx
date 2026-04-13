@@ -1,0 +1,40 @@
+---
+title: "7.2 Training Philosophy"
+---
+
+**No prescribed pipeline.** Affine deliberately provides only evaluation environments and scoring signals -- not a built-in training pipeline. Miners independently choose their:
+
+- RL algorithms
+- Hyperparameters
+- Training strategies
+
+> **Why this matters:** This design treats training methodology as part of the competitive landscape: the system rewards *outcomes* (model quality across environments) rather than prescribing *process*.
+
+## Methodological Diversity
+
+The deliberate non-prescription of training methods leads to methodological diversity -- different miners may use:
+
+- Different RL frameworks
+- Different reward shaping
+- Different curriculum strategies
+
+This diversity both increases the probability of discovering effective training approaches and prevents the network from converging on a single, potentially suboptimal, training recipe.
+
+## Geometric Mean Pressure
+
+The geometric mean scoring ([Section 6.1](/scoring/scoring-pipeline/), Stage 3) creates strong pressure toward broad competence. Consider the following example:
+
+- A miner who scores **0.95** in six environments but **0.0** in one receives a **near-zero** aggregate -- not a respectable 0.81.
+
+> **Key implication:** This incentivizes broad-spectrum capability improvement rather than narrow specialization in a few environments.
+
+## Training-Friendly Environments
+
+All Affine environments are designed for dual use as both evaluation benchmarks and RL training substrates. They provide:
+
+- **Deterministic seeding** -- for reproducibility
+- **Structured reward signals at varying granularity:**
+  - Dense per-step shaping in LiveWeb and NavWorld
+  - Per-task outcomes in SWE-Infinite
+  - Per-position distributional signals in DISTILL
+- **The OpenEnv protocol** ([Section 4.4](/architecture/openenv-protocol/)) -- for gym-compatible integration into training loops

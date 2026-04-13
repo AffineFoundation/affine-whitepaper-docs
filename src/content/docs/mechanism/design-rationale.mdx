@@ -1,0 +1,62 @@
+---
+title: "3.6 Design Rationale"
+---
+
+The preceding sections described *what* the Affine mechanism does. This section explains *why* — providing explicit justification for the key design choices.
+
+## Why Geometric Mean Aggregation?
+
+A simple arithmetic mean allows a miner to compensate for poor performance in one environment with strong performance in another. The geometric mean — which collapses toward zero when any input approaches zero — prevents this trade-off.
+
+Consider the difference:
+
+- **Arithmetic mean:** A miner scoring 0.95 in six environments but 0.0 in one receives a respectable **0.81**
+- **Geometric mean:** The same miner receives a near-zero aggregate, effectively **~0.0**
+
+> **Why this matters:** This property is essential for driving broad-spectrum capability improvement rather than narrow specialization. A miner cannot ignore any environment and remain competitive.
+
+## Why ELO Rather Than Direct Score Ranking?
+
+ELO ratings accumulate information across scoring rounds, providing temporal smoothing that a single-round ranking cannot. The benefits include:
+
+- A miner that performs well consistently over many rounds maintains a high rating even if a single round is anomalous
+- The provisional/established K-factor split balances **responsiveness** (new miners converge quickly) with **stability** (established miners are not dislodged by noise)
+
+## Why Absence Decay?
+
+Without decay, a miner could submit a strong model, go offline, and continue collecting emissions from its historical rating.
+
+> **Why this matters:** Absence decay ensures that only actively serving models retain weight, aligning incentives with ongoing availability. The network rewards continuous participation, not one-time contributions.
+
+## Why Burn Emissions to UID 0?
+
+The ability to redirect emissions to UID 0 provides an operational safety valve. It is activated during situations such as:
+
+- **Security incidents** — e.g., the discovery of a Chutes routing vulnerability that allowed requests to be redirected to GPT-4o
+- **Infrastructure transitions**
+- **Scoring mechanism updates**
+
+> **Why this matters:** Burning emissions prevents exploiters from profiting while the system is in a known-inconsistent state. It is a circuit-breaker, not a penalty.
+
+## Why a Fixed Model Architecture?
+
+Requiring all miners to use Qwen3-32B eliminates architectural confounds from evaluation. This constraint provides two benefits:
+
+- **Fair comparison** — score differences reflect training quality, not model capacity or quantization artifacts
+- **Simplified anti-copy detection** — hidden states and logprobs can be compared directly without accounting for architectural differences
+
+## Why No Prescribed Training Pipeline?
+
+Affine deliberately provides only evaluation environments and scoring signals — not a built-in training pipeline. Miners independently choose their:
+
+- RL algorithms
+- Hyperparameters
+- Training strategies
+
+This design treats training methodology as part of the competitive landscape: the system rewards *outcomes* (model quality across environments) rather than prescribing *process*.
+
+> **Why this matters:** Methodological diversity increases the probability of discovering effective training approaches and prevents the network from converging on a single, potentially suboptimal, training recipe.
+
+---
+
+The mechanism described above governs *what* is evaluated and *how* scores translate to incentives. The next section describes the infrastructure that makes this evaluation operationally feasible at scale.
