@@ -1,0 +1,63 @@
+# Affine Whitepaper
+
+Workspace for the Affine (Bittensor Subnet 120) whitepaper.
+
+`whitepaper/raw-content/draft.md` is the source of truth for the published whitepaper and future paper. Only markdown files under `whitepaper/` should be connected for whitepaper rendering and front-end usage pipeline.
+
+## Table of contents
+
+- **§1 Abstract**
+  - [1.0 Abstract](whitepaper/01-abstract/1.0-abstract.md)
+- **§2 Introduction**
+  - [2.0 Introduction](whitepaper/02-introduction/2.0-introduction.md)
+- **§3 The Affine Mechanism**
+  - [3.1 System Participants and Roles](whitepaper/03-mechanism/3.1-system-participants-and-roles.md)
+  - [3.2 Task Lifecycle](whitepaper/03-mechanism/3.2-task-lifecycle.md)
+  - [3.3 Evaluation Loop and Sampling Strategy](whitepaper/03-mechanism/3.3-evaluation-loop-and-sampling.md)
+  - [3.6 Design Rationale](whitepaper/03-mechanism/3.6-design-rationale.md)
+- **§4 System Architecture**
+  - [4.1 Architectural Overview](whitepaper/04-architecture/4.1-architectural-overview.md)
+  - [4.2 The Environment Layer: Affinetes](whitepaper/04-architecture/4.2-environment-layer-affinetes.md)
+  - [4.3 The Inference Layer: Chutes and Beyond](whitepaper/04-architecture/4.3-inference-layer.md)
+  - [4.4 The OpenEnv Protocol](whitepaper/04-architecture/4.4-openenv-protocol.md)
+  - [4.5 Logprob Collection and Distributional Training Signals](whitepaper/04-architecture/4.5-logprob-collection.md)
+  - [4.6 Execution Flow Across Layers](whitepaper/04-architecture/4.6-execution-flow.md)
+  - [4.7 Scalability and Reproducibility](whitepaper/04-architecture/4.7-scalability-and-reproducibility.md)
+- **§5 Evaluation Environments**
+  - [5.0 Environment Overview](whitepaper/05-environments/5.0-environment-overview.md)
+  - [5.1 SWE-Infinite](whitepaper/05-environments/5.1-swe-infinite.md)
+  - [5.2 LiveWeb Arena](whitepaper/05-environments/5.2-liveweb-arena.md)
+  - [5.3 MemoryGym](whitepaper/05-environments/5.3-memorygym.md)
+  - [5.4 NavWorld / QQR](whitepaper/05-environments/5.4-navworld-qqr.md)
+  - [5.5 GAME / OpenSpiel](whitepaper/05-environments/5.5-game-openspiel.md)
+  - [5.6 DISTILL](whitepaper/05-environments/5.6-distill.md)
+- **§6 Scoring Pipeline**
+  - [6.1 The Scoring Pipeline (4-stage)](whitepaper/06-scoring/6.1-scoring-pipeline.md)
+  - [6.2 Anti-Plagiarism Mechanisms](whitepaper/06-scoring/6.2-anti-plagiarism.md)
+- **§7 Mining Tutorial**
+  - [7.1 Miner Workflow](whitepaper/07-mining-tutorial/7.1-miner-workflow.md)
+  - [7.2 Training Philosophy](whitepaper/07-mining-tutorial/7.2-training-philosophy.md)
+- **§8 Training**
+  - [8.1 The DISTILL Training Pipeline](whitepaper/08-training/8.1-distill-pipeline.md)
+  - [8.2 Reward Signal Design Across Environments](whitepaper/08-training/8.2-reward-signal-design.md)
+- **§9 Affine Model Benchmarks**
+  - [9.0 Benchmark Overview](whitepaper/09-benchmarks/9.0-benchmark-overview.md)
+  - [9.1 Stable Benchmarks](whitepaper/09-benchmarks/9.1-stable-benchmarks.md)
+  - [9.2 Snapshot Benchmarks](whitepaper/09-benchmarks/9.2-snapshot-benchmarks.md)
+  - [9.3 Code Generation and Software Engineering](whitepaper/09-benchmarks/9.3-code-generation.md)
+  - [9.4 Interpretation](whitepaper/09-benchmarks/9.4-interpretation.md)
+- **§10 Roadmap & Conclusion**
+  - [10.0 Roadmap Overview](whitepaper/10-roadmap/10.0-roadmap-overview.md)
+  - [10.1 Model Architecture Scaling](whitepaper/10-roadmap/10.1-model-architecture-scaling.md)
+  - [10.2 Distillation Evolution](whitepaper/10-roadmap/10.2-distillation-evolution.md)
+  - [10.3 Inference Infrastructure Independence](whitepaper/10-roadmap/10.3-inference-independence.md)
+  - [10.4 Environment Expansion](whitepaper/10-roadmap/10.4-environment-expansion.md)
+  - [10.5 Scoring Mechanism Refinement](whitepaper/10-roadmap/10.5-scoring-refinement.md)
+  - [10.6 Conclusion and Limitations](whitepaper/10-roadmap/10.6-conclusion.md)
+
+## How to use
+
+- `whitepaper/raw-content/draft.md` is the canonical source. Structured section files under `whitepaper/` are derived from it.
+- Read [`STYLE.md`](STYLE.md) for file/folder conventions and formatting rules.
+- Work on a branch, open a PR against `main`.
+- Install `bierner.markdown-mermaid` in VSCode to render diagrams.

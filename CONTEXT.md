@@ -4,6 +4,10 @@
 
 Workspace for the **Affine whitepaper** (Bittensor Subnet 120). The whitepaper describes the evaluation mechanism, system architecture, evaluation environments, scoring pipeline, and preliminary benchmark results.
 
+## Content pipeline
+
+`whitepaper/raw-content/draft.md` is the source of truth for the published whitepaper and any future paper. Only markdown files under `whitepaper/` should be connected for whitepaper rendering and front-end usage pipeline. The structured section files (`whitepaper/0N-*/`) are derived from the draft and organized for modular editing and review.
+
 ## Reference pointers
 
 - **Live system config API:** `https://webapi.affine.io/api/v1/system/config` — canonical environment list. Re-fetch before writing §5 or §9.
