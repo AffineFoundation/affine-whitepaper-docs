@@ -1,0 +1,80 @@
+---
+/**
+ * Custom Header — adds Whitepaper/Subnet Docs nav links
+ * inline with the existing social links in Starlight's header bar.
+ */
+import type { Props } from '@astrojs/starlight/props';
+import Default from '@astrojs/starlight/components/Header.astro';
+
+const currentPath = Astro.url.pathname;
+const isSubnets = currentPath.startsWith('/subnets');
+---
+
+<div class="header-with-nav">
+  <Default {...Astro.props}><slot /></Default>
+  <div class="doc-nav-links">
+    <a
+      href="/"
+      class:list={['doc-nav-link', { active: !isSubnets }]}
+    >
+      Whitepaper
+    </a>
+    <a
+      href="/subnets/"
+      class:list={['doc-nav-link', { active: isSubnets }]}
+    >
+      Subnet Docs
+    </a>
+  </div>
+</div>
+
+<style>
+  .header-with-nav {
+    position: relative;
+  }
+
+  .doc-nav-links {
+    position: absolute;
+    top: 0;
+    right: 120px;
+    height: var(--sl-nav-height);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    z-index: 5;
+  }
+
+  .doc-nav-link {
+    font-family: 'Space Mono', 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-decoration: none;
+    color: #686868;
+    padding: 4px 10px;
+    border-radius: 6px;
+    transition: all 200ms ease;
+  }
+
+  .doc-nav-link:hover {
+    color: #A1A1A1;
+    background-color: rgba(255, 255, 255, 0.04);
+  }
+
+  .doc-nav-link.active {
+    color: #5AC8FA;
+    background-color: rgba(90, 200, 250, 0.08);
+  }
+
+  @media (max-width: 768px) {
+    .doc-nav-links {
+      right: 80px;
+    }
+
+    .doc-nav-link {
+      font-size: 9px;
+      padding: 3px 8px;
+    }
+  }
+</style>

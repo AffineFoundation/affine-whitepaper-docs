@@ -1,0 +1,738 @@
+---
+title: "Task Scheduling System"
+---
+
+
+import CollapsibleAside from '../../../../components/CollapsibleAside.astro';
+import SourceLink from '../../../../components/SourceLink.astro';
+import Table from '../../../../components/Table.astro';
+
+<CollapsibleAside title="Relevant Source Files">
+  <SourceLink text="affine/database/cli.py" href="https://github.com/AffineFoundation/affine-cortex/blob/main/affine/database/cli.py" />
+  <SourceLink text="affine/src/scheduler/__init__.py" href="https://github.com/AffineFoundation/affine-cortex/blob/main/affine/src/scheduler/__init__.py" />
+  <SourceLink text="affine/src/scheduler/main.py" href="https://github.com/AffineFoundation/affine-cortex/blob/main/affine/src/scheduler/main.py" />
+  <SourceLink text="affine/src/scheduler/sampling_scheduler.py" href="https://github.com/AffineFoundation/affine-cortex/blob/main/affine/src/scheduler/sampling_scheduler.py" />
+</CollapsibleAside>
+
+The Task Scheduling System is responsible for generating, allocating, and managing evaluation tasks for all miners in the network. It implements a sophisticated weighted allocation strategy with fairness guarantees, anti-starvation mechanisms, and rate limiting to prevent answer memorization attacks. This system runs as the Scheduler Service and coordinates with the database and other services to maintain an optimal task distribution across environments.
+
+For information about task execution, see [Executor Service](/subnets/backend-services-deep-dive/executor-service#11.4). For details on how miners are validated before receiving tasks, see [Monitor Service](/subnets/backend-services-deep-dive/monitor-service#11.2). For task pool database structure, see [Task Pool Management](/subnets/database-storage/task-pool-management#8.3).
+
+---
+
+## Architecture Overview
+
+The scheduler service consists of three independent schedulers that work together to manage the complete task lifecycle:
+
+```mermaid
+graph TB
+    subgraph "Scheduler Service"
+        PM["PerMinerSamplingScheduler<br/>(main task generation)"]
+        SL["SamplingScheduler<br/>(list rotation)"]
+        SA["MinerSlotsAdjuster<br/>(dynamic capacity)"]
+    end
+    
+    subgraph "Data Sources"
+        SC["system_config<br/>(environments)"]
+        MT["miners<br/>(valid_miners)"]
+        MS["miner_stats<br/>(sampling_slots)"]
+        SR["sample_results<br/>(completed_task_ids)"]
+    end
+    
+    subgraph "Task Pool"
+        TP["task_pool<br/>(pending tasks)"]
+    end
+    
+    subgraph "External Services"
+        EX["Executor Service"]
+    end
+    
+    PM -->|"read config"| SC
+    PM -->|"query valid miners"| MT
+    PM -->|"get slots"| MS
+    PM -->|"check completed"| SR
+    PM -->|"create tasks"| TP
+    PM -->|"cleanup invalid"| TP
+    
+    SL -->|"update sampling_list"| SC
+    SL -->|"cleanup removed tasks"| TP
+    
+    SA -->|"calculate success rate"| MS
+    SA -->|"adjust slots (3-10)"| MS
+    
+    EX -->|"fetch tasks"| TP
+    EX -->|"submit results"| SR
+
+
+
+```
+
+**Scheduler Components:**
+
+<Table>
+
+| Component | File | Purpose | Frequency |
+|-----------|------|---------|-----------|
+| `PerMinerSamplingScheduler` | [affine/src/scheduler/sampling_scheduler.py:22-949]() | Main task generation with weighted allocation, anti-starvation, rate limiting | Every 10 seconds |
+| `SamplingScheduler` | [affine/src/scheduler/sampling_scheduler.py:951-1179]() | Sampling list rotation and size adjustment | Every 5 minutes |
+| `MinerSlotsAdjuster` | [affine/src/scheduler/slots_adjuster.py]() | Dynamic slot adjustment based on success rates | Every 5 minutes |
+
+</Table>
+
+
+**Sources:** [affine/src/scheduler/main.py:19-109](), [affine/src/scheduler/sampling_scheduler.py:22-76](), [affine/src/scheduler/sampling_scheduler.py:951-969]()
+
+---
+
+## Per-Miner Task Generation
+
+The `PerMinerSamplingScheduler` is the core scheduling component that generates tasks independently for each miner. It runs every 10 seconds to incrementally allocate tasks based on available capacity and configured weights.
+
+### Scheduling Loop Flow
+
+```mermaid
+graph TB
+    Start["_scheduling_loop<br/>(every 10s)"]
+    
+    Start --> GetMiners["get_valid_miners()<br/>(MinersDAO)"]
+    GetMiners --> DetectChanges["Detect miner<br/>additions/removals"]
+    DetectChanges --> Cleanup["_cleanup_removed_miners()<br/>(delete pending tasks)"]
+    
+    Cleanup --> GetEnvs["Get sampling environments<br/>(enabled_for_sampling=True)"]
+    
+    GetEnvs --> ForEach["For each valid miner"]
+    ForEach --> GetSlots["_get_miner_slots()<br/>(from miner_stats)"]
+    GetSlots --> CountActive["Count active tasks<br/>per environment"]
+    
+    CountActive --> CheckCapacity{"total_pool_count<br/>< total_slots?"}
+    CheckCapacity -->|No| CheckStarve{"Any env with<br/>active=0 and<br/>missing tasks?"}
+    CheckStarve -->|No| Skip["Skip this miner"]
+    CheckStarve -->|Yes| AllowOverflow["Allow temporary<br/>overflow (+1 per<br/>starving env)"]
+    
+    CheckCapacity -->|Yes| GetMissing["Get missing task IDs<br/>per environment"]
+    AllowOverflow --> GetMissing
+    
+    GetMissing --> CheckRateLimit["Check rate limits<br/>(rotation_rate * 1.2)"]
+    CheckRateLimit --> Select["_select_tasks_to_create()<br/>(weighted allocation)"]
+    Select --> Create["batch_create_tasks()<br/>(TaskPoolDAO)"]
+    Create --> Record["_record_allocations()<br/>(for rate limiting)"]
+    
+    Record --> ForEach
+    Skip --> ForEach
+
+
+
+```
+
+**Sources:** [affine/src/scheduler/sampling_scheduler.py:125-189](), [affine/src/scheduler/sampling_scheduler.py:355-469]()
+
+### Capacity Management
+
+Each miner has a dynamic number of **sampling slots** (3-10, default 6) stored in the `miner_stats` table. The scheduler enforces capacity limits while allowing temporary overflow for anti-starvation:
+
+```mermaid
+graph LR
+    subgraph "Capacity Policy"
+        Normal["Normal: total_pool_count<br/>≤ total_slots"]
+        Overflow["Anti-starvation:<br/>allow +1 per starving env<br/>(max 0.5 × total_slots)"]
+    end
+    
+    subgraph "Slot Allocation"
+        Slots["sampling_slots<br/>(3-10, default 6)"]
+        Adjusted["Adjusted by<br/>MinerSlotsAdjuster"]
+    end
+    
+    Slots --> Normal
+    Slots --> Overflow
+    Adjusted --> Slots
+```
+
+**Key Parameters:**
+
+<Table>
+
+| Parameter | Default | Range | Location |
+|-----------|---------|-------|----------|
+| `DEFAULT_SLOTS` | 6 | - | [affine/src/scheduler/sampling_scheduler.py:37]() |
+| `MIN_SLOTS` | 3 | - | [affine/src/scheduler/sampling_scheduler.py:38]() |
+| `MAX_SLOTS` | 10 | - | [affine/src/scheduler/sampling_scheduler.py:39]() |
+| `scheduling_interval` | 10s | - | [affine/src/scheduler/sampling_scheduler.py:51]() |
+
+</Table>
+
+
+**Sources:** [affine/src/scheduler/sampling_scheduler.py:37-76](), [affine/src/scheduler/sampling_scheduler.py:190-206](), [affine/src/scheduler/sampling_scheduler.py:355-469]()
+
+---
+
+## Weighted Task Allocation
+
+Tasks are distributed across environments using a weighted allocation strategy with fairness guarantees. Each environment has a `scheduling_weight` parameter (default 1.0) that determines its relative priority.
+
+### Allocation Algorithm
+
+The `_select_tasks_to_create` method implements a three-stage allocation strategy:
+
+```mermaid
+graph TB
+    Start["slots_available<br/>(allowed_total - total_pool_count)"]
+    
+    Start --> Stage1["Stage 1: Anti-Starvation<br/>Reserve 1 slot per starving env<br/>(random sampling)"]
+    Stage1 --> Starve["Identify starving envs:<br/>active_count = 0<br/>AND missing_tasks > 0"]
+    Starve --> Reserve["Allocate 1 task each<br/>(frequency fairness)"]
+    
+    Reserve --> Stage2["Stage 2: Weighted Fairness<br/>Calculate target slots<br/>per environment"]
+    Stage2 --> Target["target = total_slots ×<br/>(weight / sum_weights)"]
+    Target --> Floor["Floor + remainder<br/>distribution"]
+    Floor --> Deficit["Allocate by deficit:<br/>target - active_count"]
+    
+    Deficit --> Stage3["Stage 3: Round-Robin<br/>Remaining capacity"]
+    Stage3 --> RoundRobin["Cycle through envs<br/>with missing tasks"]
+    
+    RoundRobin --> Result["List of task specs<br/>(env, task_id)"]
+
+
+
+```
+
+**Example:** With `total_slots=6`, weights: `game=2`, `lgc-v2=1`, `print=1` (sum=4):
+- `game` target: 6 × 2/4 = **3 slots**
+- `lgc-v2` target: 6 × 1/4 = 1.5 → **2 slots** (ceiling for fairness)
+- `print` target: 6 × 1/4 = 1.5 → **1 slot** (floor to not exceed total)
+
+If `game` has 1 active, `lgc-v2` has 0, `print` has 2, with `slots_available=5`:
+- `game` deficit: 3-1 = 2 → **allocate 2**
+- `lgc-v2` deficit: 2-0 = 2 → **allocate 2** (anti-starvation gets it prioritized)
+- `print` deficit: 1-2 = 0 → **allocate 0**
+- Total: 4 allocated, 1 remaining → round-robin
+
+**Sources:** [affine/src/scheduler/sampling_scheduler.py:554-716](), [affine/src/scheduler/sampling_scheduler.py:208-224]()
+
+### Configuration Parameters
+
+Weights are configured in `system_config.json` under each environment's `sampling_config`:
+
+```json
+{
+  "environments": {
+    "game": {
+      "enabled_for_sampling": true,
+      "sampling_config": {
+        "scheduling_weight": 2.0,
+        "sampling_count": 500,
+        "rotation_count": 50,
+        "rotation_interval": 3600
+      }
+    }
+  }
+}
+```
+
+**Sources:** [affine/database/cli.py:106-276](), [affine/src/scheduler/sampling_scheduler.py:208-224]()
+
+---
+
+## Anti-Starvation Mechanisms
+
+The scheduler implements multiple anti-starvation mechanisms to ensure all environments receive tasks even when capacity is constrained.
+
+### Starvation Detection
+
+```mermaid
+graph TB
+    Check["Check each environment"]
+    Check --> HasMissing{"Has missing<br/>task IDs?"}
+    HasMissing -->|No| NotStarving["Not starving"]
+    HasMissing -->|Yes| CheckActive{"Active tasks<br/>= 0?"}
+    CheckActive -->|No| NotStarving
+    CheckActive -->|Yes| Starving["Starving<br/>(needs immediate allocation)"]
+    
+    Starving --> Reserve["Stage 1:<br/>Reserve 1 slot"]
+    Reserve --> Random["Random sample<br/>from starving envs"]
+    Random --> Allocate["Allocate 1 task<br/>(frequency fairness)"]
+
+
+```
+
+**Anti-Starvation Policies:**
+
+<Table>
+
+| Policy | Trigger | Action | Location |
+|--------|---------|--------|----------|
+| Stage 1 Reservation | `active_count = 0` AND `missing_tasks > 0` | Allocate 1 task via random sampling | [affine/src/scheduler/sampling_scheduler.py:616-631]() |
+| Temporary Overflow | All starving envs AND `total_pool_count ≥ total_slots` | Allow overflow up to `ceil(0.5 × total_slots)` | [affine/src/scheduler/sampling_scheduler.py:426-451]() |
+| Deficit Prioritization | `active_count &lt; target_slots` | Allocate by deficit magnitude first | [affine/src/scheduler/sampling_scheduler.py:665-687]() |
+
+</Table>
+
+
+**Sources:** [affine/src/scheduler/sampling_scheduler.py:426-451](), [affine/src/scheduler/sampling_scheduler.py:616-631]()
+
+---
+
+## Rate Limiting (Anti-Memorization)
+
+To prevent miners from memorizing answers through repeated task allocation, the scheduler implements rate limiting based on the configured rotation rate.
+
+### Rate Limiting Logic
+
+```mermaid
+graph TB
+    Check["For each miner-env pair"]
+    Check --> Exempt{"Exempt from<br/>rate limiting?"}
+    
+    Exempt -->|"uid=0 or uid>1000<br/>(system miners)"| Skip["No rate limit"]
+    Exempt -->|"first_block age<br/>> 14400 blocks<br/>(~48 hours)"| Skip
+    
+    Exempt -->|No| CalcRate["Calculate allowed rate"]
+    CalcRate --> Rotation["rotation_rate =<br/>rotation_count ×<br/>(3600 / rotation_interval) ×<br/>RATE_MARGIN (1.2)"]
+    
+    Rotation --> MinRate["min_rate =<br/>sampling_count / 48<br/>(ensure completion<br/>within 2 days)"]
+    
+    MinRate --> Max["allowed_per_hour =<br/>max(rotation_rate, min_rate)"]
+    Max --> Count["Get allocation_count<br/>from last hour"]
+    
+    Count --> Compare{"allocation_count<br/>≥ allowed_per_hour?"}
+    Compare -->|Yes| Block["Skip this env<br/>(rate limited)"]
+    Compare -->|No| Allow["Allow allocation"]
+
+
+```
+
+**Key Constants:**
+
+<Table>
+
+| Constant | Value | Purpose | Location |
+|----------|-------|---------|----------|
+| `RATE_MARGIN` | 1.2 | Allow actual rate to exceed rotation rate by 20% | [affine/src/scheduler/sampling_scheduler.py:42]() |
+| Minimum rate | `sampling_count / 48` | Guarantee completion within 48 hours | [affine/src/scheduler/sampling_scheduler.py:333]() |
+| Exemption threshold | 14400 blocks (~48h) | Exempt miners after initial sampling period | [affine/src/scheduler/sampling_scheduler.py:316-319]() |
+
+</Table>
+
+
+**Internal Tracking:**
+
+The scheduler maintains an in-memory sliding window of allocation timestamps per miner-environment pair in `_allocation_timestamps`:
+
+- **Key format:** `"{hotkey}#{revision}#{env}"`
+- **Value:** List of Unix timestamps
+- **Cleanup:** Expired timestamps removed on each check
+- **Recording:** Timestamps added after task creation
+
+**Sources:** [affine/src/scheduler/sampling_scheduler.py:42-43](), [affine/src/scheduler/sampling_scheduler.py:286-354](), [affine/src/scheduler/sampling_scheduler.py:226-284]()
+
+---
+
+## Sampling List Management
+
+The `SamplingScheduler` handles rotation and size adjustment of sampling lists. It runs independently every 5 minutes.
+
+### Rotation Process
+
+```mermaid
+graph TB
+    Check["Check all environments<br/>(every 5 minutes)"]
+    
+    Check --> Resolve["Resolve dynamic<br/>dataset_range_source<br/>(if configured)"]
+    Resolve --> UpdateRange["Update dataset_range<br/>in system_config"]
+    
+    UpdateRange --> CheckSize{"current_size ≠<br/>sampling_count?"}
+    CheckSize -->|Yes| Adjust["_adjust_sampling_list_size()<br/>(add/remove tasks)"]
+    CheckSize -->|No| CheckRotation{"rotation_enabled<br/>AND<br/>time ≥ interval?"}
+    
+    Adjust --> CheckRotation
+    CheckRotation -->|No| Skip["Skip rotation"]
+    CheckRotation -->|Yes| Rotate["_rotate_environment()"]
+    
+    Rotate --> Manager["SamplingListManager.<br/>rotate_sampling_list()"]
+    Manager --> RemoveAdd["Remove rotation_count tasks<br/>Add rotation_count new tasks"]
+    
+    RemoveAdd --> Update["_update_sampling_config()<br/>(save new list)"]
+    Update --> Cleanup["_cleanup_removed_tasks()<br/>(delete from task_pool)"]
+
+
+```
+
+**Rotation Parameters:**
+
+<Table>
+
+| Parameter | Location | Description |
+|-----------|----------|-------------|
+| `rotation_enabled` | `sampling_config` | Enable/disable automatic rotation |
+| `rotation_count` | `sampling_config` | Number of tasks to rotate per cycle |
+| `rotation_interval` | `sampling_config` | Seconds between rotations (default 3600) |
+| `last_rotation_at` | `sampling_config` | Unix timestamp of last rotation |
+| `prioritize_new` | computed | If `dataset_range_source` exists, prioritize unsampled tasks |
+
+</Table>
+
+
+**Sources:** [affine/src/scheduler/sampling_scheduler.py:987-1067](), [affine/src/scheduler/sampling_scheduler.py:1069-1095](), [affine/src/scheduler/sampling_scheduler.py:1117-1147]()
+
+### Dynamic Dataset Range Resolution
+
+For environments with `dataset_range_source`, the scheduler periodically resolves the range from a remote source (e.g., GitHub API for SWE-Bench dataset sizes):
+
+```mermaid
+graph LR
+    Config["sampling_config.<br/>dataset_range_source"]
+    Config --> Resolve["resolve_dataset_range_source()"]
+    Resolve --> API["External API<br/>(e.g., GitHub)"]
+    API --> NewRange["New dataset_range"]
+    NewRange --> Expand["Expansion only<br/>(preserve old_range)"]
+    Expand --> Update["Update system_config"]
+```
+
+**Sources:** [affine/src/scheduler/sampling_scheduler.py:1000-1033](), [affine/database/cli.py:168-186]()
+
+---
+
+## Dynamic Slot Adjustment
+
+The `MinerSlotsAdjuster` automatically adjusts each miner's `sampling_slots` (3-10) based on their recent success rate across all environments.
+
+### Adjustment Strategy
+
+```mermaid
+graph TB
+    Start["Run every 5 minutes"]
+    Start --> Query["Get all miners<br/>with sampling_stats"]
+    
+    Query --> Calc["Calculate global<br/>success rate<br/>(last 6 hours)"]
+    Calc --> ForEach["For each miner"]
+    
+    ForEach --> MinerRate["Calculate miner's<br/>success rate<br/>(all envs, 6h)"]
+    MinerRate --> Compare{"miner_rate<br/>vs global_rate?"}
+    
+    Compare -->|"< global - 0.1"| Decrease["Decrease slots<br/>(min 3)"]
+    Compare -->|"> global + 0.1"| Increase["Increase slots<br/>(max 10)"]
+    Compare -->|"Within ±0.1"| Keep["Keep current slots"]
+    
+    Decrease --> Update["update_miner_info()<br/>(MinerStatsDAO)"]
+    Increase --> Update
+    Keep --> Update
+    
+    Update --> ForEach
+
+
+```
+
+**Adjustment Logic:**
+
+```python
+# Slot adjustment thresholds
+if miner_success_rate < global_success_rate - 0.1:
+    new_slots = max(current_slots - 1, MIN_SLOTS)  # Decrease
+elif miner_success_rate > global_success_rate + 0.1:
+    new_slots = min(current_slots + 1, MAX_SLOTS)  # Increase
+else:
+    new_slots = current_slots  # Keep unchanged
+```
+
+**Success Rate Calculation:**
+
+- **Window:** Last 6 hours of sampling statistics
+- **Metrics:** `success / (success + rate_limit_errors + timeout_errors + other_errors)`
+- **Source:** `env_stats` in `miner_stats` table
+- **Aggregation:** Sum across all enabled environments
+
+**Sources:** [affine/src/scheduler/slots_adjuster.py]() (referenced but not provided in full)
+
+---
+
+## Task Priority and Selection
+
+When selecting which tasks to allocate, the scheduler prioritizes tasks from the **tail** of the sampling list to minimize rotation risk.
+
+### Priority Ordering
+
+```mermaid
+graph LR
+    SamplingList["sampling_list<br/>[0, 5, 12, 89, 102, ...]"]
+    SamplingList --> Reverse["Reverse iteration<br/>(tail first)"]
+    Reverse --> Priority["Priority order:<br/>[..., 102, 89, 12, 5, 0]"]
+    Priority --> Select["Select first N<br/>from missing_ids"]
+    
+    Rationale["Rationale: Tail tasks<br/>less likely to be<br/>rotated out"]
+    
+    Priority -.-> Rationale
+```
+
+**Implementation:**
+
+```python
+# Prioritize tasks from tail (reverse order)
+priority_order = []
+for task_id in reversed(sampling_list):
+    if task_id in missing_ids:
+        priority_order.append(task_id)
+```
+
+**Sources:** [affine/src/scheduler/sampling_scheduler.py:521-527]()
+
+---
+
+## Cleanup Mechanisms
+
+The scheduler performs multiple cleanup operations to maintain task pool consistency.
+
+### Cleanup Operations
+
+```mermaid
+graph TB
+    subgraph "Cleanup Loop (every 5 min)"
+        Invalid["_cleanup_invalid_sampling_tasks()<br/>(tasks not in sampling_list)"]
+        Expired["cleanup_expired_paused_tasks()<br/>(TTL exceeded)"]
+    end
+    
+    subgraph "On Miner Removal"
+        Detect["Detect removed miners<br/>(set difference)"]
+        DeletePending["Delete pending tasks<br/>(keep assigned for executor)"]
+    end
+    
+    subgraph "On Sampling List Change"
+        ListChange["Detect list rotation<br/>(compare with cache)"]
+        CleanupRotated["_cleanup_removed_tasks()<br/>(pending tasks only)"]
+    end
+    
+    subgraph "Startup Cleanup"
+        Startup["delete_all_assigned_tasks()<br/>(orphaned from crashes)"]
+    end
+    
+    Invalid --> Scan1["Scan all pending tasks"]
+    Expired --> Scan2["Scan paused tasks"]
+    Detect --> Query["Query all miner tasks"]
+    ListChange --> Iterate["Iterate all valid miners"]
+
+
+
+
+```
+
+**Cleanup Types:**
+
+<Table>
+
+| Type | Trigger | Target | Location |
+|------|---------|--------|----------|
+| Invalid sampling tasks | Every 5 min | Tasks where env disabled OR task_id not in sampling_list | [affine/src/scheduler/sampling_scheduler.py:833-948]() |
+| Expired paused tasks | Every 5 min | Paused tasks with `paused_until &lt; current_time` | [affine/src/scheduler/sampling_scheduler.py:823]() |
+| Removed miner tasks | On miner removal detection | Pending tasks only (keep assigned) | [affine/src/scheduler/sampling_scheduler.py:744-805]() |
+| Rotated task IDs | After rotation | Pending tasks for removed task_ids | [affine/src/scheduler/sampling_scheduler.py:1149-1179]() |
+| Orphaned assigned tasks | Service startup | All assigned tasks (likely from crashes) | [affine/src/scheduler/main.py:32-38]() |
+
+</Table>
+
+
+**Sources:** [affine/src/scheduler/sampling_scheduler.py:807-948](), [affine/src/scheduler/main.py:32-38]()
+
+---
+
+## Configuration Reference
+
+### System Config Structure
+
+The scheduler reads configuration from the `system_config` table's `environments` parameter:
+
+```json
+{
+  "environments": {
+    "game": {
+      "enabled_for_sampling": true,
+      "enabled_for_scoring": true,
+      "sampling_config": {
+        "dataset_range": [[0, 500]],
+        "dataset_range_source": null,
+        "sampling_count": 500,
+        "sampling_list": [12, 45, 89, ...],
+        "last_rotation_at": 1704067200,
+        "rotation_enabled": true,
+        "rotation_count": 50,
+        "rotation_interval": 3600,
+        "scheduling_weight": 2.0
+      },
+      "scoring_config": {
+        "weights": {...}
+      }
+    }
+  }
+}
+```
+
+**Key Parameters:**
+
+<Table>
+
+| Parameter | Type | Description | Used By |
+|-----------|------|-------------|---------|
+| `enabled_for_sampling` | boolean | Include in task generation | PerMinerSamplingScheduler |
+| `sampling_count` | integer | Target size of sampling_list | SamplingScheduler |
+| `sampling_list` | integer[] | Active task IDs to distribute | PerMinerSamplingScheduler |
+| `scheduling_weight` | float | Relative priority (default 1.0) | PerMinerSamplingScheduler |
+| `rotation_enabled` | boolean | Enable automatic rotation | SamplingScheduler |
+| `rotation_count` | integer | Tasks to rotate per cycle | SamplingScheduler |
+| `rotation_interval` | integer | Seconds between rotations | SamplingScheduler |
+| `dataset_range` | integer[][] | Valid task ID ranges | SamplingListManager |
+| `dataset_range_source` | string | Remote source URL (optional) | SamplingScheduler |
+
+</Table>
+
+
+**Sources:** [affine/database/cli.py:151-275](), [affine/src/scheduler/sampling_scheduler.py:163-171]()
+
+### Environment Variables
+
+<Table>
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SCHEDULER_CLEANUP_INTERVAL` | 300 | Seconds between cleanup operations |
+
+</Table>
+
+
+**Sources:** [affine/src/scheduler/main.py:130]()
+
+---
+
+## Database Interactions
+
+### Read Operations
+
+```mermaid
+graph LR
+    Scheduler["PerMinerSamplingScheduler"]
+    
+    Scheduler -->|"get_param_value('environments')"| Config["system_config"]
+    Scheduler -->|"get_valid_miners()"| Miners["miners<br/>(is_valid=true)"]
+    Scheduler -->|"get_miner_slots()"| Stats["miner_stats<br/>(sampling_slots)"]
+    Scheduler -->|"get_completed_task_ids()"| Results["sample_results"]
+    Scheduler -->|"get_pending_task_ids()"| Pool["task_pool"]
+```
+
+### Write Operations
+
+```mermaid
+graph LR
+    Scheduler["PerMinerSamplingScheduler"]
+    
+    Scheduler -->|"batch_create_tasks()"| Pool["task_pool<br/>(status=pending)"]
+    Scheduler -->|"_batch_delete_tasks()"| Pool2["task_pool<br/>(cleanup)"]
+    
+    RotationScheduler["SamplingScheduler"]
+    RotationScheduler -->|"set_param('environments')"| Config["system_config<br/>(sampling_list update)"]
+    
+    SlotsAdjuster["MinerSlotsAdjuster"]
+    SlotsAdjuster -->|"update_miner_info()"| Stats["miner_stats<br/>(sampling_slots)"]
+```
+
+**Sources:** [affine/src/scheduler/sampling_scheduler.py:44-57](), [affine/src/scheduler/sampling_scheduler.py:718-741]()
+
+---
+
+## Service Startup and Lifecycle
+
+### Initialization Sequence
+
+```mermaid
+graph TB
+    Start["main()"]
+    Start --> Logging["setup_logging()"]
+    Logging --> DB["init_client()"]
+    DB --> Cleanup["delete_all_assigned_tasks()<br/>(orphan cleanup)"]
+    
+    Cleanup --> Signal["Setup signal handlers<br/>(SIGINT, SIGTERM)"]
+    
+    Signal --> Start1["SamplingScheduler.start()"]
+    Start1 --> Start2["PerMinerSamplingScheduler.start()"]
+    Start2 --> Start3["MinerSlotsAdjuster.start()"]
+    
+    Start3 --> Wait["await shutdown_event.wait()"]
+    
+    Wait --> Stop3["MinerSlotsAdjuster.stop()"]
+    Stop3 --> Stop2["PerMinerSamplingScheduler.stop()"]
+    Stop2 --> Stop1["SamplingScheduler.stop()"]
+    
+    Stop1 --> Close["close_client()"]
+    Close --> Exit["Exit"]
+
+
+```
+
+**Scheduler Tasks:**
+
+<Table>
+
+| Scheduler | Loop Interval | Initial Delay | Shutdown Behavior |
+|-----------|---------------|---------------|-------------------|
+| `SamplingScheduler` | 300s (5 min) | 0s | Cancel task, await completion |
+| `PerMinerSamplingScheduler` | 10s | 0s | Cancel both loops, await completion |
+| `MinerSlotsAdjuster` | 300s (5 min) | 0s | Cancel task, await completion |
+
+</Table>
+
+
+**Cleanup Task in PerMinerSamplingScheduler:**
+
+- **Loop interval:** 300s (5 min)
+- **Initial delay:** 60s (stabilization)
+- **Operations:** Invalid task cleanup + expired paused task cleanup
+
+**Sources:** [affine/src/scheduler/main.py:19-109](), [affine/src/scheduler/sampling_scheduler.py:78-107](), [affine/src/scheduler/sampling_scheduler.py:807-831]()
+
+---
+
+## Error Handling and Resilience
+
+The scheduler implements multiple resilience patterns to handle failures gracefully:
+
+### Per-Miner Error Isolation
+
+```python
+# Error handling at miner level
+for miner in miners:
+    try:
+        await self._schedule_miner(miner, sampling_envs, environments)
+    except Exception as e:
+        logger.error(
+            f"Error scheduling miner {miner['hotkey'][:8]}...: {e}",
+            exc_info=True
+        )
+        # Continue with next miner
+```
+
+### Loop-Level Recovery
+
+```python
+while self._running:
+    try:
+        await self._schedule_all_miners()
+        await asyncio.sleep(self.scheduling_interval)
+    except asyncio.CancelledError:
+        logger.info("Scheduling loop cancelled")
+        break
+    except Exception as e:
+        logger.error(f"Scheduling loop error: {e}", exc_info=True)
+        await asyncio.sleep(10)  # Backoff on error
+```
+
+**Error Patterns:**
+
+<Table>
+
+| Error Type | Handling | Impact |
+|------------|----------|--------|
+| Single miner scheduling failure | Log and continue | Other miners unaffected |
+| Database query failure | Log, sleep 10s, retry loop | Temporary pause |
+| Config parsing error | Log and skip environment | Other envs continue |
+| Task creation failure | Log and continue | Retry next cycle |
+| Signal (SIGINT/SIGTERM) | Graceful shutdown all schedulers | Clean exit |
+
+</Table>
+
+
+**Sources:** [affine/src/scheduler/sampling_scheduler.py:125-189](), [affine/src/scheduler/sampling_scheduler.py:987-998]()

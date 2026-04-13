@@ -1,0 +1,513 @@
+---
+title: "SDK Overview & Setup"
+---
+
+
+import CollapsibleAside from '../../../../components/CollapsibleAside.astro';
+import SourceLink from '../../../../components/SourceLink.astro';
+import Table from '../../../../components/Table.astro';
+
+<CollapsibleAside title="Relevant Source Files">
+  <SourceLink text=".env.example" href="https://github.com/AffineFoundation/affine-cortex/blob/main/.env.example" />
+  <SourceLink text="README.md" href="https://github.com/AffineFoundation/affine-cortex/blob/main/README.md" />
+  <SourceLink text="affine/__init__.py" href="https://github.com/AffineFoundation/affine-cortex/blob/main/affine/__init__.py" />
+  <SourceLink text="tests/test_private_repo_workflow.py" href="https://github.com/AffineFoundation/affine-cortex/blob/main/tests/test_private_repo_workflow.py" />
+</CollapsibleAside>
+
+The Affine SDK provides a Python interface for programmatically interacting with the Affine evaluation platform. It allows developers to evaluate models against multiple environments, query miner metadata, and access historical evaluation data without running a full validator or miner node.
+
+**Scope**: This page covers SDK installation, configuration, and basic usage patterns. For detailed information about specific SDK capabilities, see:
+- Environment evaluation: [Environment Evaluation](/subnets/sdk-reference/environment-evaluation#6.2)
+- Miner metadata queries: [Miner Discovery API](/subnets/sdk-reference/miner-discovery-api#6.3)
+- Historical data access: [Data Access & History](/subnets/sdk-reference/data-access-history#6.4)
+
+---
+
+## Installation
+
+### Requirements
+
+- **Python**: 3.10 or higher
+- **Package Manager**: `uv` (recommended) or `pip`
+
+### Installation via uv
+
+The recommended installation method uses `uv` for fast dependency resolution:
+
+```bash
+# Install uv if not already installed
+pip install uv
+
+# Clone the repository
+git clone https://github.com/AffineFoundation/affine-cortex
+cd affine-cortex
+
+# Create virtual environment and install dependencies
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Sync dependencies and install package
+uv sync
+uv pip install -e .
+```
+
+The `uv sync` command reads [pyproject.toml:1-100]() and [uv.lock:1-100]() to install all required dependencies including `bittensor`, `openai`, `aiohttp`, and environment-specific packages.
+
+**Sources**: [Dockerfile:11-27](), [pyproject.toml]()
+
+---
+
+## Configuration
+
+The SDK requires specific environment variables for authentication and API access. Create a `.env` file in your project root:
+
+### Minimum Required Variables
+
+```bash
+# Chutes API access (required for evaluating deployed miners)
+CHUTES_API_KEY=cpk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# HuggingFace credentials (required for miner metadata)
+HF_USER=your-username
+HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Bittensor wallet (required for blockchain queries)
+BT_WALLET_COLD=default
+BT_WALLET_HOT=default
+```
+
+### Configuration Variables Summary
+
+<Table>
+
+| Variable | Purpose | Required For |
+|----------|---------|--------------|
+| `CHUTES_API_KEY` | Authenticate with Chutes.ai for model inference | Evaluating miners |
+| `HF_USER` | HuggingFace username | Miner metadata queries |
+| `HF_TOKEN` | HuggingFace access token (read scope sufficient) | Miner metadata queries |
+| `BT_WALLET_COLD` | Bittensor coldkey name | Blockchain queries |
+| `BT_WALLET_HOT` | Bittensor hotkey name | Blockchain queries |
+| `SUBTENSOR_ENDPOINT` | Bittensor network endpoint (default: "finney") | Optional |
+
+</Table>
+
+
+**Note**: For local model evaluation (without Chutes), you can set a placeholder `CHUTES_API_KEY` value. See [scripts/evaluate_local_model.py:293-295]() for details.
+
+**Sources**: [.env.example:1-99](), [examples/sdk.py:14-19](), [examples/sdk2.py:13-18]()
+
+---
+
+## SDK Public API
+
+When you import `affine as af`, the following components become available:
+
+```mermaid
+graph TB
+    subgraph "affine Package"
+        INIT["__init__.py<br/>SDK Entry Point"]
+    end
+    
+    subgraph "Core Exports"
+        LOG["Logging<br/>logger, info, debug, trace"]
+        CONFIG["Configuration<br/>singleton, get_conf"]
+        MODELS["Data Models<br/>Challenge, Response<br/>Miner, Result"]
+    end
+    
+    subgraph "Environment Factories"
+        SAT["af.SAT()<br/>Standardized Test"]
+        ABD["af.ABD()<br/>Argument Blindness"]
+        DED["af.DED()<br/>Deductive Reasoning"]
+        ALFWORLD["af.ALFWORLD()<br/>Interactive Text Game"]
+        WEBSHOP["af.WEBSHOP()<br/>E-commerce Navigation"]
+        BABYAI["af.BABYAI()<br/>Grid World Tasks"]
+        SCIWORLD["af.SCIWORLD()<br/>Science Simulations"]
+        TEXTCRAFT["af.TEXTCRAFT()<br/>Minecraft Text Game"]
+    end
+    
+    subgraph "Discovery & Query"
+        MINERS["af.miners(uid)<br/>Query Miner Metadata"]
+    end
+    
+    subgraph "Storage & Data Access"
+        DATASET["af.dataset(blocks)<br/>Historical Results"]
+        LOAD_SUM["af.load_summary(block)<br/>Weight Summaries"]
+        SAVE_SUM["af.save_summary(data)<br/>Save Weights"]
+        SINK["af.sink(results)<br/>Upload Results"]
+        PRUNE["af.prune(blocks)<br/>Delete Old Data"]
+    end
+    
+    subgraph "HTTP Client"
+        CLIENT["_get_client()<br/>Shared HTTP Session"]
+    end
+    
+    INIT --> LOG
+    INIT --> CONFIG
+    INIT --> MODELS
+    INIT --> SAT
+    INIT --> ABD
+    INIT --> DED
+    INIT --> ALFWORLD
+    INIT --> WEBSHOP
+    INIT --> BABYAI
+    INIT --> SCIWORLD
+    INIT --> TEXTCRAFT
+    INIT --> MINERS
+    INIT --> DATASET
+    INIT --> LOAD_SUM
+    INIT --> SAVE_SUM
+    INIT --> SINK
+    INIT --> PRUNE
+    INIT --> CLIENT
+```
+
+**Diagram: SDK Public API Surface**
+
+### Key Exports by Category
+
+**Logging Functions** [affine/__init__.py:13-15]():
+- `logger` - Main logger instance
+- `info()`, `debug()`, `trace()` - Convenience logging functions
+- `setup_logging()` - Configure log levels
+
+**Environment Factory Functions** [affine/__init__.py:51-61]():
+- `SAT()`, `ABD()`, `DED()` - Affine environments
+- `ALFWORLD()`, `WEBSHOP()`, `BABYAI()`, `SCIWORLD()`, `TEXTCRAFT()` - AgentGym environments
+
+**Miner Discovery** [affine/__init__.py:31]():
+- `miners(uid=None, **kwargs)` - Query miner metadata and filter miners
+
+**Storage Functions** [affine/__init__.py:41-44]():
+- `dataset(blocks, ...)` - Iterate historical evaluation results
+- `load_summary(block)` - Load weight summaries from R2
+- `sink(results)` - Upload evaluation results to R2
+- `prune(blocks)` - Delete old data blocks
+
+**Data Models** [affine/__init__.py:20-22]():
+- `Challenge` - Evaluation task specification
+- `Response` - Model response wrapper
+- `Miner` - Miner metadata container
+- `Result` - Evaluation result with score and metadata
+
+**Sources**: [affine/__init__.py:1-62]()
+
+---
+
+## Basic Usage Pattern
+
+The typical SDK workflow follows this sequence:
+
+```mermaid
+sequenceDiagram
+    participant User as "User Code"
+    participant SDK as "affine SDK"
+    participant Env as "Environment Instance"
+    participant Chutes as "Chutes.ai API"
+    participant Docker as "Docker/Affinetes"
+    
+    User->>SDK: import affine as af
+    User->>SDK: af.trace()
+    User->>SDK: load_dotenv()
+    
+    Note over User,SDK: Discovery Phase
+    User->>SDK: miners = await af.miners(uid)
+    SDK->>Chutes: Query miner metadata
+    Chutes-->>SDK: Model info, endpoint
+    SDK-->>User: Miner object
+    
+    Note over User,Docker: Evaluation Phase
+    User->>SDK: env = af.ALFWORLD()
+    SDK->>Env: Create environment instance
+    User->>Env: result = await env.evaluate(miner)
+    Env->>Docker: Start evaluation container
+    Env->>Chutes: Send prompts, get responses
+    Chutes-->>Env: Model completions
+    Env->>Docker: Execute environment logic
+    Docker-->>Env: Task result
+    Env-->>User: Result object with score
+    
+    Note over User,SDK: Data Access Phase (Optional)
+    User->>SDK: data = af.dataset(blocks=[100,101])
+    SDK-->>User: Iterator over results
+```
+
+**Diagram: SDK Usage Flow**
+
+**Sources**: [examples/sdk.py:1-52](), [examples/sdk2.py:1-41]()
+
+---
+
+## Quick Start Example
+
+### Example 1: Evaluate a Miner
+
+This example queries a miner by UID and evaluates it on two different environments:
+
+```python
+import asyncio
+import affine as af
+from dotenv import load_dotenv
+
+# Enable trace logging
+af.trace()
+load_dotenv()
+
+async def main():
+    # Query miner by UID
+    miner = await af.miners(uid=7)
+    
+    # Evaluate on DED environment
+    ded_env = af.DED()
+    result = await ded_env.evaluate(miner)
+    print(f"Score: {result[7].score}")
+    
+    # Evaluate on ALFWORLD environment
+    alfworld_env = af.ALFWORLD()
+    result = await alfworld_env.evaluate(miner)
+    print(f"Score: {result[7].score}")
+
+asyncio.run(main())
+```
+
+**Sources**: [examples/sdk.py:13-52]()
+
+### Example 2: Direct Model Evaluation
+
+Evaluate a model directly without using the Chutes service:
+
+```python
+import asyncio
+import affine as af
+from dotenv import load_dotenv
+
+af.trace()
+load_dotenv()
+
+async def main():
+    # Create environment
+    alfworld_env = af.ALFWORLD()
+    
+    # Evaluate model directly
+    result = await alfworld_env.evaluate(
+        model="deepseek-ai/DeepSeek-V3",
+        base_url="https://llm.chutes.ai/v1",
+        task_id=2  # Specific task
+    )
+    
+    print(f"Score: {result.score}")
+    print(f"Success: {result.success}")
+    print(f"Latency: {result.latency_seconds}s")
+
+asyncio.run(main())
+```
+
+**Sources**: [examples/sdk2.py:12-41]()
+
+### Example 3: List Available Environments
+
+Discover what environments are available for evaluation:
+
+```python
+import affine as af
+
+# Get all available environments
+envs = af.tasks.list_available_environments()
+
+for env_type, env_names in envs.items():
+    print(f"{env_type}:")
+    for name in env_names:
+        print(f"  - {name}")
+```
+
+**Output:**
+```
+AffineSDKEnv:
+  - SAT
+  - ABD
+  - DED
+AgentGymSDKEnv:
+  - ALFWORLD
+  - WEBSHOP
+  - BABYAI
+  - SCIWORLD
+  - TEXTCRAFT
+```
+
+**Sources**: [examples/sdk.py:42-48]()
+
+---
+
+## SDK Architecture
+
+The SDK's internal structure maps to these code modules:
+
+```mermaid
+graph TB
+    subgraph "User Code"
+        APP["User Application"]
+    end
+    
+    subgraph "SDK Layer [affine/__init__.py]"
+        FACTORIES["Factory Functions<br/>SAT, ALFWORLD, etc."]
+        MINERS_API["af.miners()<br/>affine/miners.py"]
+        STORAGE_API["af.dataset()<br/>af.load_summary()<br/>affine/storage.py"]
+    end
+    
+    subgraph "Environment System [affine/tasks/]"
+        REGISTRY["ENVIRONMENT_REGISTRY<br/>Global Registry"]
+        BASE["BaseSDKEnv<br/>Abstract Base Class"]
+        AFFINE_ENV["AffineSDKEnv<br/>SAT, ABD, DED"]
+        AGENTGYM_ENV["AgentGymSDKEnv<br/>ALFWORLD, etc."]
+    end
+    
+    subgraph "External Integration [affine/]"
+        HTTP["http_client.py<br/>Shared aiohttp Session"]
+        AFFINETES["affinetes Library<br/>Docker Orchestration"]
+    end
+    
+    subgraph "External Services"
+        CHUTES_SVC["Chutes.ai<br/>Model Inference"]
+        R2_SVC["Cloudflare R2<br/>Data Storage"]
+        BT_SVC["Bittensor Network<br/>Metagraph"]
+    end
+    
+    APP --> FACTORIES
+    APP --> MINERS_API
+    APP --> STORAGE_API
+    
+    FACTORIES --> REGISTRY
+    REGISTRY --> BASE
+    BASE --> AFFINE_ENV
+    BASE --> AGENTGYM_ENV
+    
+    AFFINE_ENV --> AFFINETES
+    AGENTGYM_ENV --> AFFINETES
+    
+    MINERS_API --> HTTP
+    MINERS_API --> BT_SVC
+    MINERS_API --> CHUTES_SVC
+    
+    STORAGE_API --> HTTP
+    STORAGE_API --> R2_SVC
+    
+    AFFINE_ENV --> HTTP
+    AGENTGYM_ENV --> HTTP
+    AFFINE_ENV --> CHUTES_SVC
+    AGENTGYM_ENV --> CHUTES_SVC
+```
+
+**Diagram: SDK Internal Architecture**
+
+### Key Modules
+
+<Table>
+
+| Module | Purpose | Entry Point |
+|--------|---------|-------------|
+| `affine/__init__.py` | SDK public API | All `af.*` exports |
+| `affine/tasks/` | Environment system | Factory functions |
+| `affine/miners.py` | Miner discovery | `af.miners()` |
+| `affine/storage.py` | R2 data access | `af.dataset()`, `af.load_summary()` |
+| `affine/http_client.py` | HTTP connection pooling | `_get_client()` |
+| `affine/setup.py` | Logging configuration | `af.trace()`, `af.debug()` |
+
+</Table>
+
+
+**Sources**: [affine/__init__.py:1-62](), [affine/tasks/__init__.py]()
+
+---
+
+## Environment Variables Deep Dive
+
+### Authentication Flow
+
+```mermaid
+sequenceDiagram
+    participant Code as "SDK Code"
+    participant Env as "Environment"
+    participant BT as "Bittensor"
+    participant HF as "HuggingFace"
+    participant Chutes as "Chutes.ai"
+    
+    Note over Code: Load .env file
+    Code->>Env: dotenv.load_dotenv()
+    
+    Note over Code,BT: Blockchain Authentication
+    Code->>BT: Query metagraph
+    Note right of BT: Uses BT_WALLET_COLD<br/>and BT_WALLET_HOT
+    BT-->>Code: Miner UIDs, hotkeys
+    
+    Note over Code,HF: Model Metadata Authentication
+    Code->>HF: Query model info
+    Note right of HF: Uses HF_TOKEN<br/>and HF_USER
+    HF-->>Code: Model details
+    
+    Note over Code,Chutes: Inference Authentication
+    Code->>Chutes: Send prompt
+    Note right of Chutes: Uses CHUTES_API_KEY<br/>in Authorization header
+    Chutes-->>Code: Model completion
+```
+
+**Diagram: Authentication Flow**
+
+### Optional Configuration
+
+Additional environment variables for advanced usage:
+
+<Table>
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `SUBTENSOR_ENDPOINT` | `"finney"` | Bittensor network |
+| `SUBTENSOR_FALLBACK` | WebSocket URL | Backup endpoint |
+| `AFFINE_R2_PUBLIC` | `"1"` | Use public R2 URLs |
+| `AFFINETES_HOSTS` | `"localhost"` | Docker deployment targets |
+
+</Table>
+
+
+**Sources**: [.env.example:37-89]()
+
+---
+
+## Error Handling
+
+Common SDK errors and solutions:
+
+### Missing API Key
+
+```python
+# Error: CHUTES_API_KEY not set
+import os
+if not os.getenv("CHUTES_API_KEY"):
+    raise ValueError("CHUTES_API_KEY environment variable required")
+```
+
+**Sources**: [examples/sdk.py:14-19](), [scripts/evaluate_local_model.py:286-290]()
+
+### Miner Not Found
+
+```python
+miner = await af.miners(uid=999)
+assert miner, "Unable to obtain miner, please check if registered"
+```
+
+**Sources**: [examples/sdk.py:24-25]()
+
+### Docker Requirements
+
+The SDK requires Docker for environment evaluation. If Docker is not available, evaluation will fail with connection errors. See [Environment System Architecture](/subnets/evaluation-environments/environment-system-architecture#7.1) for Docker setup details.
+
+---
+
+## Next Steps
+
+Now that you have the SDK installed and configured:
+
+1. **Evaluate Environments**: Learn how to evaluate models against different environments in [Environment Evaluation](/subnets/sdk-reference/environment-evaluation#6.2)
+2. **Query Miners**: Explore miner discovery and filtering in [Miner Discovery API](/subnets/sdk-reference/miner-discovery-api#6.3)
+3. **Access Historical Data**: Work with evaluation results in [Data Access & History](/subnets/sdk-reference/data-access-history#6.4)
+4. **Understand Environments**: Learn about available evaluation environments in [Evaluation Environments](/subnets/evaluation-environments#7)
+
+**Sources**: [affine/__init__.py:1-62](), [examples/sdk.py:1-52](), [examples/sdk2.py:1-41](), [scripts/evaluate_local_model.py:1-451]()

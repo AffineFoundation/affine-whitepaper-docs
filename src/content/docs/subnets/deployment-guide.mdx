@@ -1,0 +1,529 @@
+---
+title: "Deployment Guide"
+---
+
+
+import CollapsibleAside from '../../../components/CollapsibleAside.astro';
+import SourceLink from '../../../components/SourceLink.astro';
+import Table from '../../../components/Table.astro';
+
+<CollapsibleAside title="Relevant Source Files">
+  <SourceLink text="docker-compose.local.yml" href="https://github.com/AffineFoundation/affine-cortex/blob/main/docker-compose.local.yml" />
+  <SourceLink text="docker-compose.yml" href="https://github.com/AffineFoundation/affine-cortex/blob/main/docker-compose.yml" />
+  <SourceLink text="pyproject.toml" href="https://github.com/AffineFoundation/affine-cortex/blob/main/pyproject.toml" />
+  <SourceLink text="uv.lock" href="https://github.com/AffineFoundation/affine-cortex/blob/main/uv.lock" />
+</CollapsibleAside>
+
+This page provides an overview of deployment strategies and configurations for running Affine Cortex infrastructure. It covers the architectural patterns, configuration requirements, and deployment workflows for both validators and miners.
+
+**Scope:** This document focuses on deployment architecture and configuration. For step-by-step production deployment instructions, see [Docker Deployment](/subnets/deployment-guide/docker-deployment#10.1). For local development setup, see [Local Development Setup](/subnets/deployment-guide/local-development-setup#10.2). For hardware specifications, see [Resource Requirements & Scaling](/subnets/deployment-guide/resource-requirements-scaling#10.3).
+
+---
+
+## Deployment Roles
+
+Affine supports two primary deployment roles with different operational requirements:
+
+<Table>
+
+| Role | Services Required | Resource Profile | Blockchain Interaction |
+|------|------------------|------------------|----------------------|
+| **Validator** | validator service only | Medium (6-8GB RAM) | Sets weights on-chain |
+| **Backend Operator** | 5 microservices + API | High (varies by service) | Read-only metagraph access |
+| **Miner** | CLI tools only | Minimal | Commits model metadata |
+
+</Table>
+
+
+**Validators** run a single service that queries the scoring system, fetches weights, and commits them to the Bittensor blockchain. This is the minimum viable validator deployment.
+
+**Backend Operators** run the complete microservices stack (API, Monitor, Scheduler, Executor, Scorer) that validates miners, generates tasks, executes evaluations, and calculates scores. Most validators rely on shared backend infrastructure rather than operating their own.
+
+**Miners** do not run persistent services; they use CLI commands to deploy models and commit metadata, then serve inference via Chutes platform.
+
+---
+
+## Deployment Configurations
+
+Affine provides three Docker Compose configurations for different use cases:
+
+### Production Validator (`docker-compose.yml`)
+
+```mermaid
+graph TB
+    subgraph "docker-compose.yml"
+        ValidatorService["validator service<br/>affinefoundation/affine:latest<br/>mem_limit: 8g"]
+        Watchtower["watchtower service<br/>nickfedor/watchtower<br/>--interval 30"]
+    end
+    
+    subgraph "Mounted Resources"
+        Wallets["~/.bittensor/wallets<br/>(read-only)"]
+        Logs["/var/log/affine/validator"]
+    end
+    
+    subgraph "External Dependencies"
+        Registry["Docker Hub<br/>affinefoundation/affine"]
+        BT["Bittensor Blockchain<br/>set_weights"]
+    end
+    
+    ValidatorService --> Wallets
+    ValidatorService --> Logs
+    ValidatorService --> BT
+    Watchtower -.pulls updates.-> Registry
+    Watchtower -.monitors.-> ValidatorService
+
+
+```
+
+**Use Case:** Production validator deployment with zero-downtime updates  
+**Command:** `docker compose up -d`  
+**Auto-Updates:** Watchtower checks for new images every 30 seconds  
+**Environment Variables:** Set via `.env` file (wallets, endpoints, API keys)
+
+**Sources:** [docker-compose.yml:1-26]()
+
+---
+
+### Backend Services (`docker-compose.backend.yml`)
+
+```mermaid
+graph TB
+    subgraph "docker-compose.backend.yml"
+        API["api service<br/>Port 8000<br/>Health checks"]
+        Monitor["monitor service<br/>Miner validation"]
+        Scheduler["scheduler service<br/>Task generation<br/>depends_on: api"]
+        Executor["executor service<br/>Task execution<br/>depends_on: api"]
+        Scorer["scorer service<br/>Score calculation<br/>depends_on: api"]
+    end
+    
+    subgraph "Shared Infrastructure"
+        DB[(DynamoDB Tables)]
+        DockerSocket["/var/run/docker.sock<br/>(executor only)"]
+        WalletMount["~/.bittensor/wallets<br/>(monitor only)"]
+    end
+    
+    subgraph "External Services"
+        Subtensor["Subtensor<br/>Metagraph queries"]
+        HF["HuggingFace<br/>Model validation"]
+        Chutes["Chutes Platform<br/>Inference endpoints"]
+    end
+    
+    Scheduler --> API
+    Executor --> API
+    Scorer --> API
+    
+    API --> DB
+    Monitor --> DB
+    Scheduler --> DB
+    Executor --> DB
+    Scorer --> DB
+    
+    Executor --> DockerSocket
+    Monitor --> WalletMount
+    
+    Monitor --> Subtensor
+    Monitor --> HF
+    Monitor --> Chutes
+
+
+```
+
+**Use Case:** Complete backend infrastructure for validators running their own stack  
+**Command:** `docker compose -f docker-compose.backend.yml up -d`  
+**Service Count:** 5 independent microservices + API gateway  
+**Startup Order:** API starts first (health gate), then dependent services
+
+**Sources:** Diagram 6 from system architecture overview
+
+---
+
+### Local Development (`docker-compose.local.yml`)
+
+```mermaid
+graph LR
+    subgraph "Override Configuration"
+        LocalOverride["docker-compose.local.yml<br/>image: affine:local<br/>build: Dockerfile"]
+    end
+    
+    subgraph "Base Configuration"
+        BaseCompose["docker-compose.yml<br/>image: affinefoundation/affine:latest"]
+    end
+    
+    subgraph "Build Workflow"
+        Dockerfile["Dockerfile<br/>Local source"]
+        LocalImage["affine:local<br/>Built image"]
+        Container["validator container<br/>Hot reload"]
+    end
+    
+    LocalOverride -.overrides.-> BaseCompose
+    LocalOverride --> Dockerfile
+    Dockerfile --> LocalImage
+    LocalImage --> Container
+
+
+```
+
+**Use Case:** Rapid iteration on code changes before production deployment  
+**Command:** `docker compose -f docker-compose.yml -f docker-compose.local.yml up --build`  
+**Image Source:** Builds `affine:local` from Dockerfile instead of pulling from registry  
+**Watchtower:** Disabled via profile (prevents auto-updates during development)
+
+**Sources:** [docker-compose.local.yml:1-15]()
+
+---
+
+## Configuration Architecture
+
+### Environment Variable Flow
+
+```mermaid
+graph TB
+    subgraph "Configuration Sources"
+        EnvFile[".env file<br/>BT_WALLET_COLD<br/>BT_WALLET_HOT<br/>SUBTENSOR_ENDPOINT<br/>CHUTES_API_KEY<br/>HF_TOKEN<br/>AWS credentials"]
+        DockerCompose["docker-compose.yml<br/>SERVICE_MODE=true<br/>mem_limit: 8g"]
+    end
+    
+    subgraph "Service-Specific Variables"
+        SchedulerEnv["scheduler:<br/>API_URL=http://api:8000"]
+        ExecutorEnv["executor:<br/>API_URL=http://api:8000"]
+        ScorerEnv["scorer:<br/>SCORER_SAVE_TO_DB=true<br/>SCORER_INTERVAL_MINUTES=60"]
+    end
+    
+    subgraph "Runtime Services"
+        ValidatorSvc["validator service<br/>Uses: BT_WALLET_*"]
+        MonitorSvc["monitor service<br/>Uses: HF_TOKEN, CHUTES_API_KEY"]
+        SchedulerSvc["scheduler service<br/>Uses: AWS credentials"]
+    end
+    
+    EnvFile --> ValidatorSvc
+    EnvFile --> MonitorSvc
+    EnvFile --> SchedulerSvc
+    
+    DockerCompose --> ValidatorSvc
+    SchedulerEnv --> SchedulerSvc
+    ExecutorEnv -.-> ExecutorSvc["executor service"]
+    ScorerEnv -.-> ScorerSvc["scorer service"]
+
+
+```
+
+**Configuration Layers:**
+
+1. **`.env` file** - Shared secrets and credentials (Bittensor wallets, API keys, AWS credentials)
+2. **`docker-compose.yml`** - Common service settings (memory limits, restart policies)
+3. **Service-specific environment** - Operational parameters (`SERVICE_MODE`, `API_URL`, intervals)
+
+**Key Variables:**
+
+<Table>
+
+| Variable | Required By | Purpose |
+|----------|------------|---------|
+| `BT_WALLET_COLD` | validator, monitor | Blockchain wallet name |
+| `BT_WALLET_HOT` | validator, monitor | Hotkey name |
+| `SUBTENSOR_ENDPOINT` | validator, monitor, scorer | Blockchain RPC endpoint |
+| `CHUTES_API_KEY` | monitor | Model deployment validation |
+| `HF_TOKEN` | monitor | HuggingFace model access |
+| `AWS_ACCESS_KEY_ID` | api, scheduler, scorer | DynamoDB access |
+| `AWS_SECRET_ACCESS_KEY` | api, scheduler, scorer | DynamoDB access |
+| `SERVICE_MODE` | scheduler, scorer | Enable continuous loops |
+
+</Table>
+
+
+**Sources:** Diagram 6 from system architecture overview, [docker-compose.yml:10-13]()
+
+---
+
+## Service Dependencies
+
+### Startup Sequence
+
+```mermaid
+graph TD
+    API_Health["API Service<br/>:8000/health<br/>180s startup grace"]
+    
+    Scheduler["Scheduler Service<br/>depends_on: api healthy"]
+    Executor["Executor Service<br/>depends_on: api healthy"]
+    Scorer["Scorer Service<br/>depends_on: api healthy"]
+    
+    Monitor["Monitor Service<br/>Independent"]
+    Validator["Validator Service<br/>Independent"]
+    
+    API_Health -->|health check passes| Scheduler
+    API_Health -->|health check passes| Executor
+    API_Health -->|health check passes| Scorer
+    
+    Scheduler -.->|creates tasks| TaskPool[(task_pool table)]
+    Executor -.->|fetches tasks| API_Endpoint["/api/v1/tasks/fetch"]
+    Scorer -.->|polls samples| API_Endpoint2["/api/v1/samples/scoring"]
+    
+    API_Endpoint --> TaskPool
+    API_Endpoint2 --> SampleResults[(sample_results table)]
+
+
+
+```
+
+**Health Gate Pattern:** The API service acts as a health gate for dependent services. Scheduler, Executor, and Scorer will not start until API's `/health` endpoint returns success, ensuring database connections and initialization are complete.
+
+**Independent Services:** Monitor and Validator services start independently because:
+- **Monitor** - Directly accesses DynamoDB and Bittensor, does not require API
+- **Validator** - Queries scorer service for weights, can retry on failure
+
+**Restart Policies:** All services use `restart: unless-stopped`, enabling independent recovery without cascading restarts.
+
+**Sources:** Diagram 6 from system architecture overview
+
+---
+
+## Resource Mounting
+
+### Persistent Storage and Sockets
+
+```mermaid
+graph LR
+    subgraph "Host Filesystem"
+        WalletDir["~/.bittensor/wallets/<br/>coldkey/hotkey"]
+        LogDir["/var/log/affine/*"]
+        DockerSock["/var/run/docker.sock"]
+    end
+    
+    subgraph "Container Mounts"
+        ValidatorWallet["validator:<br/>wallets:ro"]
+        MonitorWallet["monitor:<br/>wallets:ro"]
+        
+        ValidatorLog["validator:<br/>logs:rw"]
+        
+        ExecutorSock["executor:<br/>docker.sock:rw"]
+    end
+    
+    subgraph "Security Context"
+        ReadOnly["read-only mounts<br/>Prevents wallet modification"]
+        Privileged["docker socket<br/>Requires elevated privileges<br/>for affinetes orchestration"]
+    end
+    
+    WalletDir -->|ro| ValidatorWallet
+    WalletDir -->|ro| MonitorWallet
+    LogDir -->|rw| ValidatorLog
+    DockerSock -->|rw| ExecutorSock
+    
+    ValidatorWallet -.-> ReadOnly
+    MonitorWallet -.-> ReadOnly
+    ExecutorSock -.-> Privileged
+
+
+```
+
+**Mount Patterns:**
+
+1. **Bittensor Wallets** (`:ro`)
+   - Mounted read-only in validator and monitor services
+   - Prevents accidental wallet modification
+   - Required for blockchain signing operations
+   - **Path:** `~/.bittensor/wallets:/root/.bittensor/wallets:ro`
+
+2. **Log Volumes** (`:rw`)
+   - Persistent logging beyond container lifecycle
+   - Separate subdirectories per service
+   - **Path:** `/var/log/affine/validator:/var/log/affine/validator`
+
+3. **Docker Socket** (`:rw`)
+   - Executor service only
+   - Enables `affinetes` container orchestration for environment execution
+   - Requires elevated privileges
+   - **Path:** `/var/run/docker.sock:/var/run/docker.sock`
+
+**Security Note:** Docker socket mounting grants container-level control. Only executor service requires this capability.
+
+**Sources:** [docker-compose.yml:14-16](), Diagram 6 from system architecture overview
+
+---
+
+## Package Management
+
+### Dependency Resolution
+
+The Affine codebase uses `uv` package manager with pinned dependencies via `uv.lock`. This provides reproducible builds across development and production environments.
+
+**Key Dependencies:**
+
+<Table>
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `bittensor` | Latest | Blockchain integration |
+| `bittensor-cli` | Latest | CLI commands |
+| `fastapi` | `>=0.110.1,&lt;0.111` | API service framework |
+| `uvicorn` | `==0.22.0` | ASGI server |
+| `aiohttp` | `>=3.10.11` | Async HTTP client |
+| `boto3` | `>=1.34` | DynamoDB access |
+| `affinetes` | Git dependency | Container orchestration |
+| `basilica-sdk` | `>=0.11.0` | Kubernetes pod management |
+
+</Table>
+
+
+**CLI Entrypoint:** The `af` command is registered as a script entrypoint in `pyproject.toml`:
+
+```toml
+[project.scripts]
+af = "affine.cli.main:main"
+```
+
+This enables `af servers api`, `af db init`, etc. commands after package installation.
+
+**Sources:** [pyproject.toml:1-53](), [uv.lock:1-100]()
+
+---
+
+## Deployment Workflows
+
+### Validator Deployment Sequence
+
+```mermaid
+sequenceDiagram
+    participant Admin
+    participant Host
+    participant Docker
+    participant Registry as Docker Hub
+    participant Container as validator
+    participant Blockchain as Bittensor
+    
+    Admin->>Host: Create .env file<br/>(wallets, endpoints)
+    Admin->>Host: git clone repository
+    Host->>Docker: docker compose pull
+    Docker->>Registry: Pull affinefoundation/affine:latest
+    Registry-->>Docker: Image layers
+    Admin->>Docker: docker compose up -d
+    Docker->>Container: Start validator service
+    Container->>Blockchain: Query metagraph
+    Blockchain-->>Container: Miner UIDs
+    Container->>Container: Fetch scores from API
+    Container->>Blockchain: Set weights
+    
+    Note over Container: Watchtower monitors<br/>every 30 seconds
+    
+    Docker->>Registry: Check for updates
+    Registry-->>Docker: New image available
+    Docker->>Container: Graceful shutdown
+    Docker->>Container: Start with new image
+```
+
+**Steps:**
+1. Prepare `.env` with Bittensor wallet credentials and endpoints
+2. Pull latest production image from Docker Hub
+3. Start services with `docker compose up -d`
+4. Validator automatically begins weight-setting cycle
+5. Watchtower maintains zero-downtime updates
+
+**Sources:** [docker-compose.yml:1-26]()
+
+---
+
+### Backend Services Deployment Sequence
+
+```mermaid
+sequenceDiagram
+    participant Admin
+    participant Docker
+    participant API
+    participant Monitor
+    participant Scheduler
+    participant Executor
+    participant Scorer
+    
+    Admin->>Docker: docker compose -f backend.yml up
+    Docker->>API: Start API service
+    API->>API: Initialize DynamoDB connections
+    API->>API: Run health check endpoint
+    API-->>Docker: Health: OK
+    Docker->>Monitor: Start monitor (independent)
+    Docker->>Scheduler: Start scheduler (depends_on: api)
+    Docker->>Executor: Start executor (depends_on: api)
+    Docker->>Scorer: Start scorer (depends_on: api)
+    
+    Monitor->>Monitor: Validate miners loop
+    Scheduler->>API: POST /tasks (create tasks)
+    Executor->>API: GET /tasks/fetch
+    API-->>Executor: Task batch
+    Executor->>Executor: Execute evaluations
+    Executor->>API: POST /tasks/submit
+    Scorer->>API: GET /samples/scoring
+    API-->>Scorer: Sample results
+    Scorer->>Scorer: Calculate weights
+```
+
+**Steps:**
+1. API service starts first, initializes database connections
+2. Health check must pass before dependent services start (180s grace period)
+3. Monitor starts independently, begins miner validation
+4. Scheduler creates tasks via API
+5. Executor fetches and executes tasks
+6. Scorer calculates weights from results
+
+**Sources:** Diagram 2 from system architecture overview
+
+---
+
+## Image Management
+
+### Container Image Sources
+
+<Table>
+
+| Configuration | Image Name | Source | Build Trigger |
+|---------------|-----------|--------|---------------|
+| Production Validator | `affinefoundation/affine:latest` | Docker Hub | CI/CD on main branch |
+| Backend Services | `affinefoundation/affine:latest` | Docker Hub | CI/CD on main branch |
+| Local Development | `affine:local` | Local Dockerfile | Manual `--build` |
+
+</Table>
+
+
+**Watchtower Auto-Updates:** In production configurations, the `nickfedor/watchtower` service monitors running containers and automatically pulls new images from Docker Hub every 30 seconds. This enables zero-downtime deployments.
+
+**Local Override:** The `docker-compose.local.yml` file overrides the image source to build from the local Dockerfile, enabling rapid iteration without pushing to registry.
+
+**Sources:** [docker-compose.yml:5](), [docker-compose.local.yml:8-11]()
+
+---
+
+## Network Configuration
+
+### Service Communication
+
+All services within the Docker Compose deployment communicate via Docker's internal network:
+
+- **API Service:** Exposed on port `8000` (host) → `8000` (container)
+- **Internal Services:** Use service names as hostnames (e.g., `http://api:8000/api/v1/...`)
+- **External Access:** Only API port is exposed; other services are internal-only
+
+**Service Discovery:** Docker Compose automatically creates DNS entries for service names, enabling internal communication without hardcoded IPs.
+
+**Rate Limiting:** API implements tiered rate limiting:
+- `/scoring` endpoints: 1 request/minute (strict)
+- Read/write operations: Higher limits
+- Configuration endpoints: Lenient limits
+
+**Sources:** Diagram 4 from system architecture overview
+
+---
+
+## Next Steps
+
+This overview covers the high-level deployment architecture. For detailed instructions:
+
+- **[Docker Deployment](/subnets/deployment-guide/docker-deployment#10.1)** - Production deployment walkthrough
+- **[Local Development Setup](/subnets/deployment-guide/local-development-setup#10.2)** - Development environment setup
+- **[Resource Requirements & Scaling](/subnets/deployment-guide/resource-requirements-scaling#10.3)** - Hardware specifications and scaling strategies
+
+For configuration details:
+
+- **[Configuration](/subnets/getting-started/configuration#2.2)** - Environment variable reference
+- **[CLI Reference](/subnets/cli-reference#9)** - Command-line tools for miners
+
+For operational procedures:
+
+- **[Running a Validator](/subnets/for-validators/running-a-validator#5.2)** - Validator operational guide
+- **[Backend Services Deep Dive](/subnets/backend-services-deep-dive#11)** - Individual service documentation

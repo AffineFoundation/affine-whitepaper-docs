@@ -8,7 +8,9 @@
     "start": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "convert": "node scripts/convert-whitepaper.mjs"
+    "convert": "node scripts/convert-whitepaper.mjs",
+    "convert:whitepaper": "node scripts/convert-whitepaper.mjs",
+    "ingest:subnets": "python3 scripts/ingest-deepwiki.py --url https://deepwiki.com/AffineFoundation/affine-cortex --github https://github.com/AffineFoundation/affine-cortex --output src/content/docs/subnets --prefix subnets"
   },
   "dependencies": {
     "@astrojs/starlight": "0.34.3",

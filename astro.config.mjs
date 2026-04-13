@@ -29,6 +29,10 @@ export default defineConfig({
       logo: {
         src: './src/assets/affine-logo-white.svg',
       },
+      components: {
+        Header: './src/components/Header.astro',
+        Sidebar: './src/components/Sidebar.astro',
+      },
       customCss: ['./src/styles/custom.css'],
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/AffineFoundation' },
@@ -112,6 +116,11 @@ export default defineConfig({
             { label: '10.5 Scoring Refinement', slug: 'roadmap/scoring-refinement' },
             { label: '10.6 Conclusion', slug: 'roadmap/conclusion' },
           ],
+        },
+        // --- Subnet Documentation (auto-generated from DeepWiki ingestion) ---
+        {
+          label: 'Subnet Documentation',
+          autogenerate: { directory: 'subnets' },
         },
       ],
     }),

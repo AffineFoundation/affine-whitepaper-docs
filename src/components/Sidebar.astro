@@ -1,0 +1,29 @@
+---
+/**
+ * Custom Sidebar — shows only the relevant section's navigation.
+ * - /subnets/* → show only Subnet Documentation group
+ * - All other → show only Whitepaper groups
+ */
+import type { Props } from '@astrojs/starlight/props';
+import Default from '@astrojs/starlight/components/Sidebar.astro';
+
+const currentPath = Astro.url.pathname;
+const isSubnets = currentPath.startsWith('/subnets');
+const sidebar = Astro.locals.starlightRoute?.sidebar || [];
+
+// Filter sidebar entries
+const filtered = sidebar.filter((item: any) => {
+  if (isSubnets) {
+    return item.label === 'Subnet Documentation';
+  } else {
+    return item.label !== 'Subnet Documentation';
+  }
+});
+
+// Override the sidebar in the route data
+if (Astro.locals.starlightRoute) {
+  Astro.locals.starlightRoute.sidebar = filtered;
+}
+---
+
+<Default {...Astro.props}><slot /></Default>

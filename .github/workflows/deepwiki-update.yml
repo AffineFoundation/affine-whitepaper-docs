@@ -1,0 +1,114 @@
+name: "DeepWiki Subnet Docs Update"
+
+on:
+  workflow_dispatch:
+    inputs:
+      deepwiki_url:
+        description: 'DeepWiki URL to scrape'
+        required: true
+        default: 'https://deepwiki.com/AffineFoundation/affine-cortex'
+      github_url:
+        description: 'GitHub repo URL for source links'
+        required: true
+        default: 'https://github.com/AffineFoundation/affine-cortex'
+      git_ref:
+        description: 'Git ref for source links (branch/tag/commit)'
+        required: false
+        default: 'main'
+      mode:
+        description: 'Deployment mode'
+        required: true
+        default: 'pr'
+        type: choice
+        options:
+          - pr
+          - auto-merge
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  ingest-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Google Chrome
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable || sudo apt-get install -y chromium-browser
+
+      - name: Install ChromeDriver
+        run: |
+          CHROME_VERSION=$(google-chrome --version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' || chromium-browser --version | grep -oP '\d+\.\d+\.\d+')
+          echo "Chrome version: $CHROME_VERSION"
+          # Use chromedriver from apt or npx
+          sudo apt-get install -y chromium-chromedriver || true
+
+      - name: Run DeepWiki ingestion
+        run: |
+          python scripts/ingest-deepwiki.py \
+            --url "${{ github.event.inputs.deepwiki_url }}" \
+            --github "${{ github.event.inputs.github_url }}" \
+            --ref "${{ github.event.inputs.git_ref }}" \
+            --output src/content/docs/subnets \
+            --prefix subnets \
+            --verbose
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build site (validation)
+        run: npm run build
+
+      - name: Check for changes
+        id: check_changes
+        run: |
+          git diff --quiet src/content/docs/subnets/ || echo "changes=true" >> $GITHUB_OUTPUT
+
+      # PR mode (default)
+      - name: Create PR
+        if: steps.check_changes.outputs.changes == 'true' && github.event.inputs.mode == 'pr'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "docs: Update subnet documentation from DeepWiki"
+          title: "docs: Subnet docs update from DeepWiki"
+          body: |
+            Automated update of subnet documentation from DeepWiki.
+
+            **Source:** ${{ github.event.inputs.deepwiki_url }}
+            **GitHub:** ${{ github.event.inputs.github_url }}
+            **Ref:** ${{ github.event.inputs.git_ref }}
+
+            MDX files in `src/content/docs/subnets/` have been regenerated.
+            Site build validated successfully.
+          branch: docs/subnet-update
+          delete-branch: true
+
+      # Auto-merge mode
+      - name: Auto-merge
+        if: steps.check_changes.outputs.changes == 'true' && github.event.inputs.mode == 'auto-merge'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/content/docs/subnets/
+          git commit -m "docs: Auto-update subnet docs from DeepWiki"
+          git push

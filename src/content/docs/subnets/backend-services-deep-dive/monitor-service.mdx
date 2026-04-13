@@ -1,0 +1,676 @@
+---
+title: "Monitor Service"
+---
+
+
+import CollapsibleAside from '../../../../components/CollapsibleAside.astro';
+import SourceLink from '../../../../components/SourceLink.astro';
+import Table from '../../../../components/Table.astro';
+
+<CollapsibleAside title="Relevant Source Files">
+  <SourceLink text="affine/api/routers/miners.py" href="https://github.com/AffineFoundation/affine-cortex/blob/main/affine/api/routers/miners.py" />
+  <SourceLink text="affine/database/dao/miners.py" href="https://github.com/AffineFoundation/affine-cortex/blob/main/affine/database/dao/miners.py" />
+  <SourceLink text="affine/database/dao/scores.py" href="https://github.com/AffineFoundation/affine-cortex/blob/main/affine/database/dao/scores.py" />
+  <SourceLink text="affine/database/dao/system_config.py" href="https://github.com/AffineFoundation/affine-cortex/blob/main/affine/database/dao/system_config.py" />
+  <SourceLink text="affine/src/monitor/miners_monitor.py" href="https://github.com/AffineFoundation/affine-cortex/blob/main/affine/src/monitor/miners_monitor.py" />
+  <SourceLink text="affine/utils/model_size_checker.py" href="https://github.com/AffineFoundation/affine-cortex/blob/main/affine/utils/model_size_checker.py" />
+  <SourceLink text="affine/utils/template_checker.py" href="https://github.com/AffineFoundation/affine-cortex/blob/main/affine/utils/template_checker.py" />
+</CollapsibleAside>
+
+## Purpose and Scope
+
+The Monitor Service is responsible for discovering miners from the Bittensor metagraph, validating their deployments, detecting plagiarism, and persisting validation state to the database. This service acts as the entry gate for miners before they receive task assignments.
+
+For information about task generation after validation, see [Scheduler Service](/subnets/backend-services-deep-dive/scheduler-service#11.3). For weight calculation based on validated miners, see [Scorer Service](/subnets/backend-services-deep-dive/scorer-service#11.5).
+
+**Core Responsibilities:**
+
+- Discover miners from Bittensor metagraph and blockchain commits
+- Validate Chutes deployment status and model architecture
+- Detect plagiarism via model weight hash comparison
+- Audit chat templates for malicious benchmark-cheating code
+- Manage blacklist and system miners configuration
+- Persist validation results to `miners` table in DynamoDB
+
+**Sources:** [affine/src/monitor/miners_monitor.py:1-764]()
+
+---
+
+## Service Architecture
+
+The Monitor Service operates as a singleton background service that periodically refreshes miner validation state. It integrates with multiple external systems and internal DAOs.
+
+```mermaid
+graph TB
+    subgraph "Monitor Service"
+        Monitor["MinersMonitor<br/>(Singleton)"]
+        RefreshLoop["_refresh_loop()<br/>Background Task"]
+        ValidateMiner["_validate_miner()<br/>11-Step Pipeline"]
+        DetectPlagiarism["_detect_plagiarism()<br/>Hash Comparison"]
+    end
+    
+    subgraph "External Systems"
+        Subtensor["Subtensor<br/>get_subtensor()"]
+        Metagraph["Metagraph<br/>metagraph(NETUID)"]
+        Commits["Blockchain Commits<br/>get_all_revealed_commitments()"]
+        Chutes["Chutes Platform<br/>get_chute_info()"]
+        HuggingFace["HuggingFace API<br/>HfApi"]
+    end
+    
+    subgraph "Validation Utilities"
+        ModelChecker["ModelSizeChecker<br/>check_model_size()"]
+        TemplateChecker["TemplateChecker<br/>check_template_safety()"]
+    end
+    
+    subgraph "Database Layer"
+        MinersDAO["MinersDAO<br/>save_miner()"]
+        SystemConfigDAO["SystemConfigDAO<br/>get_blacklist()"]
+        MinersTable[("miners table<br/>PK: UID#{uid}")]
+        ConfigTable[("system_config table<br/>miner_blacklist")]
+    end
+    
+    Monitor --> RefreshLoop
+    RefreshLoop --> Subtensor
+    Subtensor --> Metagraph
+    Subtensor --> Commits
+    
+    RefreshLoop --> ValidateMiner
+    ValidateMiner --> Chutes
+    ValidateMiner --> HuggingFace
+    ValidateMiner --> ModelChecker
+    ValidateMiner --> TemplateChecker
+    
+    RefreshLoop --> DetectPlagiarism
+    RefreshLoop --> MinersDAO
+    RefreshLoop --> SystemConfigDAO
+    
+    MinersDAO --> MinersTable
+    SystemConfigDAO --> ConfigTable
+```
+
+**Singleton Pattern:** The `MinersMonitor` class uses a singleton pattern with `get_instance()` and `initialize()` methods to ensure only one instance runs globally. The background refresh loop runs every 300 seconds (configurable) by default.
+
+**Caching Strategy:** Model weight hashes and duplicate detection results are cached in memory with a 30-minute TTL to avoid redundant HuggingFace API calls.
+
+**Sources:** [affine/src/monitor/miners_monitor.py:50-131](), [affine/src/monitor/miners_monitor.py:159-287]()
+
+---
+
+## Miner Discovery Process
+
+The monitor discovers miners by querying the Bittensor metagraph and extracting commit data from the blockchain.
+
+```mermaid
+sequenceDiagram
+    participant Monitor as MinersMonitor
+    participant Subtensor as Subtensor Client
+    participant Metagraph as Bittensor Metagraph
+    participant Commits as Blockchain Commits
+    participant DB as SystemConfigDAO
+    
+    Monitor->>Subtensor: get_subtensor()
+    Monitor->>Metagraph: metagraph(NETUID)
+    Monitor->>Commits: get_all_revealed_commitments(NETUID)
+    Monitor->>Subtensor: get_current_block()
+    Monitor->>DB: get_blacklist()
+    
+    loop For each UID in metagraph
+        Monitor->>Monitor: Check blacklist
+        alt Blacklisted
+            Monitor->>Monitor: Mark invalid (reason: blacklisted)
+        else No Commit Found
+            Monitor->>Monitor: Mark invalid (reason: no_commit)
+        else Has Commit
+            Monitor->>Monitor: Parse JSON commit data
+            Monitor->>Monitor: Extract model, revision, chute_id
+            Monitor->>Monitor: _validate_miner(uid, hotkey, model, revision, chute_id, block)
+        end
+    end
+    
+    Monitor->>Monitor: _detect_plagiarism(miners)
+    Monitor->>DB: Persist all miners to database
+```
+
+**Commit Data Structure:** Each miner's commit contains:
+```json
+{
+  "model": "username/Affine-Qwen3-32B-hotkey",
+  "revision": "a1b2c3d4...",
+  "chute_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**Multi-Commit Enforcement:** Starting at block 7679000, miners with more than one commit are disqualified (unless their first commit was before 7678012 - grandfathered). This prevents miners from changing models to game the system.
+
+**Sources:** [affine/src/monitor/miners_monitor.py:536-735](), [affine/src/monitor/miners_monitor.py:132-157]()
+
+---
+
+## Validation Pipeline
+
+Each miner undergoes an 11-step validation pipeline. Failure at any step marks the miner as invalid with a specific `invalid_reason`.
+
+### Validation Steps Overview
+
+<Table>
+
+| Step | Check | Invalid Reason Example | Skipped For |
+|------|-------|------------------------|-------------|
+| 1 | Fetch chute info | `chute_fetch_failed` | None |
+| 2 | Chute slug not empty | `chute_slug_empty` | None |
+| 3 | Chute is "hot" | `chute_not_hot` | None |
+| 4 | Model name matches chute | `model_mismatch:chute={name}` | UID 0 |
+| 5 | Model name contains "Affine" | `model_name_missing_affine` | UID 0 |
+| 6 | Repo name ends with hotkey | `repo_name_not_ending_with_hotkey` | UID 0, block &lt; 7290000 |
+| 7 | Revision matches chute | `revision_mismatch:chute={rev}` | None |
+| 8 | HuggingFace model exists | `hf_model_fetch_failed` | None |
+| 9 | Model is Qwen3-32B | `model_check:{reason}` | UID 0, UID > 1000 |
+| 10 | Not duplicate commit | `duplicate_repo:from={repo}` | UID 0 |
+| 11 | Chat template is safe | `malicious_template:{reason}` | UID 0 |
+
+</Table>
+
+
+```mermaid
+flowchart TD
+    Start["Start Validation<br/>uid, hotkey, model, revision, chute_id, block"]
+    
+    Step1["Step 1: get_chute_info(chute_id)"]
+    Step2["Step 2: Validate chute_slug != empty"]
+    Step3["Step 3: Check chute.hot == true"]
+    Step4["Step 4: Verify model == chute.name"]
+    Step5["Step 5: Check 'Affine' in model"]
+    Step6["Step 6: Verify repo ends with hotkey"]
+    Step7["Step 7: Verify revision == chute.revision"]
+    Step8["Step 8: _get_model_info(model, revision)"]
+    Step9["Step 9: check_model_size(model, revision)"]
+    Step10["Step 10: _is_duplicate_commit(model, revision)"]
+    Step11["Step 11: check_template_safety(model, revision)"]
+    
+    Valid["Mark is_valid=true<br/>Return MinerInfo"]
+    Invalid["Mark is_valid=false<br/>Set invalid_reason<br/>Return MinerInfo"]
+    
+    Start --> Step1
+    Step1 -->|Failed| Invalid
+    Step1 -->|Success| Step2
+    Step2 -->|Empty| Invalid
+    Step2 -->|Not Empty| Step3
+    Step3 -->|Cold| Invalid
+    Step3 -->|Hot| Step4
+    Step4 -->|Mismatch| Invalid
+    Step4 -->|Match| Step5
+    Step5 -->|Missing| Invalid
+    Step5 -->|Present| Step6
+    Step6 -->|Wrong| Invalid
+    Step6 -->|Correct| Step7
+    Step7 -->|Mismatch| Invalid
+    Step7 -->|Match| Step8
+    Step8 -->|Failed| Invalid
+    Step8 -->|Success| Step9
+    Step9 -->|Failed| Invalid
+    Step9 -->|Pass| Step10
+    Step10 -->|Duplicate| Invalid
+    Step10 -->|Unique| Step11
+    Step11 -->|Unsafe| Invalid
+    Step11 -->|Safe| Valid
+```
+
+**Template Check Caching:** The `template_check_result` field is cached in the database to avoid redundant LLM audits. If the model and revision haven't changed, the cached result is reused.
+
+**Sources:** [affine/src/monitor/miners_monitor.py:288-491]()
+
+---
+
+## Model Architecture Validation
+
+The `ModelSizeChecker` validates that miners use exactly the Qwen3-32B architecture by inspecting `config.json` from HuggingFace.
+
+### Required Architecture Parameters
+
+```python
+REQUIRED_MODEL_CONFIG = {
+    "model_type": "qwen3",
+    "hidden_size": 5120,
+    "num_hidden_layers": 64,
+    "intermediate_size": 25600,
+    "vocab_size": 151936,
+    "num_attention_heads": 64,
+    "num_key_value_heads": 8,
+}
+```
+
+**Quantization-Proof:** This method checks architecture fields rather than file sizes, so quantized models (INT4, INT8) with the correct architecture pass validation.
+
+**Manipulation-Resistant:** Faking these config fields would break model loading in vLLM, so there's no incentive to cheat. The validator's executor would fail to load the model.
+
+```mermaid
+graph LR
+    Input["model_id, revision"]
+    Fetch["hf_hub_download()<br/>filename=config.json"]
+    Load["json.load(config.json)"]
+    Check["_check_required_model()<br/>Compare each field"]
+    
+    Pass["Return pass=true<br/>reason='ok'"]
+    Fail["Return pass=false<br/>reason='model_not_allowed:{mismatch}'"]
+    
+    Input --> Fetch
+    Fetch -->|Success| Load
+    Fetch -->|Error| Fail
+    Load --> Check
+    Check -->|All Match| Pass
+    Check -->|Any Mismatch| Fail
+```
+
+**Example Rejection:**
+- Input: `Qwen/Qwen2.5-7B-Instruct`
+- Reason: `model_not_allowed:num_hidden_layers=28 (expected 64)`
+
+**Sources:** [affine/utils/model_size_checker.py:1-123]()
+
+---
+
+## Anti-Plagiarism Detection
+
+The monitor detects plagiarism by comparing model weight hashes. For each unique hash, only the miner with the earliest `first_block` is kept as valid.
+
+### Hash Calculation Process
+
+```mermaid
+flowchart LR
+    subgraph "HuggingFace API"
+        RepoInfo["repo_info()<br/>files_metadata=True"]
+        Siblings["siblings list"]
+    end
+    
+    subgraph "Hash Extraction"
+        Filter["Filter .safetensors/.bin files"]
+        Extract["Extract lfs.sha256 for each file"]
+        Sort["Sort SHA256 hashes"]
+        Concat["Concatenate sorted hashes"]
+        Hash["SHA256(concatenated) = model_hash"]
+    end
+    
+    RepoInfo --> Siblings
+    Siblings --> Filter
+    Filter --> Extract
+    Extract --> Sort
+    Sort --> Concat
+    Concat --> Hash
+```
+
+### Duplicate Detection Logic
+
+```mermaid
+graph TB
+    Start["Group valid miners by model_hash"]
+    
+    subgraph "For each model_hash group"
+        CheckCount{"len(group) > 1?"}
+        Sort["Sort by (block, uid)<br/>ascending"]
+        KeepFirst["Keep earliest miner<br/>is_valid=true"]
+        MarkRest["Mark rest as invalid<br/>reason='model_hash_duplicate:earliest_uid={uid}'"]
+    end
+    
+    End["Return updated miners list"]
+    
+    Start --> CheckCount
+    CheckCount -->|No| End
+    CheckCount -->|Yes| Sort
+    Sort --> KeepFirst
+    KeepFirst --> MarkRest
+    MarkRest --> End
+```
+
+**Temporal Priority:** The `first_block` field determines priority. A miner who committed at block 7000000 beats a miner with the same model hash who committed at block 7000001.
+
+**Cache Duration:** Model hashes are cached for 30 minutes (`weights_ttl = 1800`) to avoid redundant API calls.
+
+**Duplicate Commit Detection:** If a HuggingFace commit message starts with "Duplicate from", the monitor automatically rejects the miner with reason `duplicate_repo:from={source_repo}`.
+
+**Sources:** [affine/src/monitor/miners_monitor.py:159-286](), [affine/src/monitor/miners_monitor.py:493-534]()
+
+---
+
+## Template Safety Auditing
+
+The `TemplateChecker` uses an LLM (DeepSeek-V3) to detect malicious code in chat templates that could give miners an unfair advantage on benchmarks.
+
+### Audit Process
+
+```mermaid
+sequenceDiagram
+    participant Monitor as MinersMonitor
+    participant Checker as TemplateChecker
+    participant HF as HuggingFace
+    participant LLM as DeepSeek-V3 API
+    participant DB as MinersDAO
+    
+    Monitor->>Checker: check(model_id, revision)
+    
+    Checker->>HF: AutoTokenizer.from_pretrained()
+    HF-->>Checker: tokenizer with chat_template
+    
+    alt Template missing
+        Checker-->>Monitor: safe=false, reason='missing_chat_template'
+    else Template > 100K chars
+        Checker-->>Monitor: safe=false, reason='template_exceeds_context_limit'
+    else Normal length
+        Checker->>LLM: POST /v1/chat/completions<br/>TEMPLATE_AUDIT_PROMPT
+        LLM-->>Checker: JSON response<br/>{is_malicious, confidence, reason}
+        
+        alt Malicious detected
+            Checker-->>Monitor: safe=false, reason='llm_audit_failed:{reason}'
+            Monitor->>DB: Save template_check_result='unsafe:{reason}'
+        else Safe
+            Checker-->>Monitor: safe=true, reason='llm_audit_passed'
+            Monitor->>DB: Save template_check_result='safe'
+        end
+    end
+```
+
+### LLM Audit Prompt Structure
+
+The audit prompt instructs the LLM to detect five categories of cheating:
+
+1. **Built-in solvers:** Algorithms for sudoku, game of 24, cryptarithmetic
+2. **Problem detection:** Logic to identify benchmark problem types
+3. **Answer injection:** Directly outputting answers based on problem type
+4. **Complex algorithms:** Backtracking, permutation, brute-force search
+5. **Excessive complexity:** Many nested loops, recursive logic, complex math
+
+**Expected Response Format:**
+```json
+{
+  "is_malicious": true,
+  "confidence": 0.95,
+  "reason": "Contains sudoku solving algorithm",
+  "detected_issues": ["backtracking_solver", "grid_validation"]
+}
+```
+
+### Caching Strategy
+
+Template check results are persisted in the `miners` table with three possible values:
+
+<Table>
+
+| Value | Meaning | Behavior |
+|-------|---------|----------|
+| `"safe"` | Previously passed audit | Skip check, use cached result |
+| `"unsafe:{reason}"` | Previously failed audit | Mark invalid immediately |
+| `null` | Not yet checked or audit skipped | Execute check |
+
+</Table>
+
+
+**Audit Skipping:** If the Chutes API key is missing or the LLM call fails, the audit is skipped with reason `llm_audit_skipped:{error}` and validation continues. The `template_check_result` remains `null` for retry on next refresh.
+
+**Sources:** [affine/utils/template_checker.py:1-323](), [affine/src/monitor/miners_monitor.py:443-491]()
+
+---
+
+## Database Schema
+
+The monitor persists validation state to the `miners` table and queries configuration from `system_config`.
+
+### Miners Table Schema
+
+```mermaid
+erDiagram
+    MINERS {
+        string pk "PK: UID#1"
+        int uid "0-255 regular, >1000 system"
+        string hotkey "SS58 address or SYSTEM-N"
+        string model "HuggingFace repo"
+        string revision "Git commit hash"
+        string chute_id "UUID"
+        string chute_slug "Chutes URL slug"
+        string model_hash "SHA256 of weights"
+        string chute_status "hot or cold"
+        string is_valid "true or false (for GSI)"
+        string invalid_reason "Rejection reason if invalid"
+        int block_number "Current block at update"
+        int first_block "Block at first commit"
+        string template_check_result "safe, unsafe:reason, or null"
+    }
+```
+
+**Key Design Decisions:**
+
+- **Single Record per UID:** No history tracking. Each UID has exactly one record that gets overwritten on refresh.
+- **GSI for Valid Miners:** The `is-valid-index` GSI enables efficient queries for `get_valid_miners()` and `get_invalid_miners()`.
+- **String Boolean:** The `is_valid` field is stored as `"true"` or `"false"` (string) to work with DynamoDB GSI key conditions.
+
+### System Config Table Schema
+
+```mermaid
+erDiagram
+    SYSTEM_CONFIG {
+        string pk "CONFIG"
+        string sk "PARAM#miner_blacklist"
+        string param_name "miner_blacklist"
+        list param_value "List of hotkey strings"
+        string param_type "list"
+        string description "Blacklisted miner hotkeys"
+        int updated_at "Unix timestamp"
+        string updated_by "cli or system"
+        int version "Incremented on update"
+    }
+```
+
+**Blacklist Merge:** The monitor loads blacklist from two sources and merges them:
+1. `AFFINE_MINER_BLACKLIST` environment variable (comma-separated)
+2. `system_config.miner_blacklist` database parameter
+
+**System Miners Config:** System miners (UID > 1000) are stored in `system_config.system_miners`:
+```json
+{
+  "1001": {"model": "openai/gpt-4o"},
+  "1002": {"model": "anthropic/claude-3.5-sonnet"}
+}
+```
+
+**Sources:** [affine/database/dao/miners.py:1-227](), [affine/database/dao/system_config.py:225-365]()
+
+---
+
+## API Integration
+
+The Monitor Service exposes miner validation data through REST API endpoints.
+
+### Available Endpoints
+
+```mermaid
+graph LR
+    subgraph "API Routers"
+        MinersRouter["/api/v1/miners"]
+    end
+    
+    subgraph "Endpoints"
+        GetByUID["GET /uid/{uid}<br/>get_miner_by_uid()"]
+        GetStats["GET /uid/{uid}/stats<br/>get_miner_stats_by_uid()"]
+    end
+    
+    subgraph "Data Sources"
+        MinersDAO["MinersDAO<br/>get_miner_by_uid()"]
+        StatsDAO["MinerStatsDAO<br/>get_miner_stats()"]
+    end
+    
+    subgraph "Response Models"
+        MinerResponse["MinerResponse<br/>uid, hotkey, model, revision,<br/>is_valid, invalid_reason,<br/>model_hash, chute_status"]
+        StatsResponse["StatsResponse<br/>sampling_stats, env_stats"]
+    end
+    
+    MinersRouter --> GetByUID
+    MinersRouter --> GetStats
+    
+    GetByUID --> MinersDAO
+    GetStats --> MinersDAO
+    GetStats --> StatsDAO
+    
+    MinersDAO --> MinerResponse
+    StatsDAO --> StatsResponse
+```
+
+### GET /miners/uid/&#123;uid&#125;
+
+Returns complete miner validation information.
+
+**Response Fields:**
+
+<Table>
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `uid` | int | Miner UID (0-255, or >1000 for system) |
+| `hotkey` | string | Miner's SS58 hotkey |
+| `model` | string | HuggingFace model repository |
+| `revision` | string | Git commit hash |
+| `chute_id` | string | Chutes deployment UUID |
+| `chute_slug` | string | Chutes URL slug identifier |
+| `model_hash` | string | SHA256 hash of model weights |
+| `chute_status` | string | "hot" or "cold" |
+| `is_valid` | string | "true" or "false" |
+| `invalid_reason` | string | Rejection reason if invalid |
+| `block_number` | int | Current block at last update |
+| `first_block` | int | Block when first committed |
+| `template_check_result` | string | "safe", "unsafe:reason", or null |
+
+</Table>
+
+
+**Example Usage:**
+```bash
+curl http://localhost:8000/api/v1/miners/uid/42
+```
+
+**Sources:** [affine/api/routers/miners.py:19-62]()
+
+---
+
+## Configuration Management
+
+The monitor supports dynamic configuration through environment variables and database parameters.
+
+### Blacklist Configuration
+
+**Environment Variable:**
+```bash
+AFFINE_MINER_BLACKLIST="5D1Qa...,5E2Rb...,5F3Sc..."
+```
+
+**Database CLI Commands:**
+```bash
+# Add hotkeys to blacklist
+af db blacklist --add 5D1Qa... 5E2Rb...
+
+# Remove hotkeys from blacklist
+af db blacklist --remove 5D1Qa...
+
+# List all blacklisted hotkeys
+af db blacklist --list
+```
+
+**Merge Behavior:** The monitor merges environment and database blacklists, removing duplicates:
+```python
+env_blacklist = set(os.getenv("AFFINE_MINER_BLACKLIST", "").split(","))
+db_blacklist = set(await config_dao.get_blacklist())
+merged = env_blacklist | db_blacklist
+```
+
+### Refresh Interval Configuration
+
+**Default:** 300 seconds (5 minutes)
+
+**Customization:**
+```python
+monitor = await MinersMonitor.initialize(refresh_interval_seconds=600)
+```
+
+### System Miners Configuration
+
+System miners (benchmark models like GPT-4o) use UIDs > 1000 and skip all validation checks.
+
+**Adding a System Miner:**
+```bash
+af db add-system-miner --uid 1001 --model "openai/gpt-4o"
+```
+
+**Database Structure:**
+```json
+{
+  "param_name": "system_miners",
+  "param_value": {
+    "1001": {"model": "openai/gpt-4o"},
+    "1002": {"model": "anthropic/claude-3.5-sonnet"}
+  }
+}
+```
+
+**Virtual Properties:** System miners get virtual hotkeys (`SYSTEM-1`, `SYSTEM-2`) and revisions (`SYSTEM-1`) that are used internally for tracking but don't correspond to real Bittensor identities.
+
+**Sources:** [affine/src/monitor/miners_monitor.py:132-157](), [affine/database/dao/system_config.py:289-365](), [affine/src/monitor/miners_monitor.py:668-697]()
+
+---
+
+## Service Lifecycle
+
+The Monitor Service runs as a background task with automatic refresh.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Uninitialized
+    
+    Uninitialized --> Initializing: MinersMonitor.initialize()
+    
+    Initializing --> FirstRefresh: Call refresh_miners()
+    FirstRefresh --> Running: Start background task
+    
+    Running --> Refreshing: Timer triggers (300s)
+    Refreshing --> Running: Update complete
+    
+    Running --> Stopping: stop_background_tasks()
+    Stopping --> Stopped: Cancel refresh task
+    
+    Stopped --> [*]
+    
+    note right of Running
+        _running = True
+        _refresh_task = asyncio.Task
+    end note
+    
+    note right of Refreshing
+        1. Query metagraph
+        2. Validate all miners
+        3. Detect plagiarism
+        4. Save to database
+    end note
+```
+
+### Initialization Sequence
+
+```python
+# Initialize singleton and start background refresh
+monitor = await MinersMonitor.initialize(refresh_interval_seconds=300)
+
+# Or get existing instance
+monitor = MinersMonitor.get_instance()
+```
+
+### Manual Refresh
+
+```python
+# Force immediate refresh (bypasses timer)
+valid_miners = await monitor.refresh_miners()
+```
+
+### Graceful Shutdown
+
+```python
+# Stop background tasks before application shutdown
+await monitor.stop_background_tasks()
+```
+
+**Error Handling:** If `refresh_miners()` raises an exception, it's logged but the background loop continues. The service remains available with stale data until the next successful refresh.
+
+**Sources:** [affine/src/monitor/miners_monitor.py:85-131](), [affine/src/monitor/miners_monitor.py:536-735]()
