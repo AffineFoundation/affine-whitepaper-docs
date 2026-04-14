@@ -1,0 +1,37 @@
+{
+  "/AffineFoundation/test-repo/1-overview": {
+    "deepwiki_path": "/AffineFoundation/test-repo/1-overview",
+    "title": "Overview",
+    "full_url": "https://deepwiki.com/AffineFoundation/test-repo/1-overview",
+    "level": 0,
+    "astro_path": "/",
+    "markdown": "# Overview\n\n**Purpose.** This is the overview page.\n\n<details>\n<summary>Relevant source files</summary>\n\n- [README.md](README.md)\n- [src/main.py](src/main.py)\n\n</details>\n\n## Architecture\n\nThe system uses {config: true} for setup.\n\nResponse time is <100ms.\n\n```mermaid\ngraph TD\n    A[\"Start\\nBegin\"] --> B[\"End\"]\n    style A fill:#f9f9f9\n```\n\n| Component | Status |\n|-----------|--------|\n| API | Live |\n| DB | Live |\n\n**Sources:** [src/api.py:1-50]()\n\n<thinking>\nThis should be removed.\n</thinking>\n\nSee [Architecture](/AffineFoundation/test-repo/2-architecture) for details.\n\nUse <br> for line breaks.",
+    "links": [
+      {
+        "text": "README.md",
+        "href": "https://github.com/AffineFoundation/test-repo/blob/main/README.md",
+        "original_href": "README.md",
+        "context": "collapsible_aside"
+      },
+      {
+        "text": "src/main.py",
+        "href": "https://github.com/AffineFoundation/test-repo/blob/main/src/main.py",
+        "original_href": "src/main.py",
+        "context": "collapsible_aside"
+      },
+      {
+        "text": "src/api.py:1-50",
+        "href": "",
+        "original_href": "",
+        "context": "inline_source"
+      },
+      {
+        "text": "Architecture",
+        "href": "/architecture",
+        "original_href": "/AffineFoundation/test-repo/2-architecture",
+        "context": "internal_link"
+      }
+    ],
+    "mermaid_diagrams": ["graph TD\n    A[\"Start\\nBegin\"] --> B[\"End\"]\n    style A fill:#f9f9f9"]
+  }
+}
