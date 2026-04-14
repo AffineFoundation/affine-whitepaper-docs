@@ -1,0 +1,22 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - npm config set fetch-retries 5
+        - npm config set fetch-retry-mintimeout 60000
+        - npm config set fetch-retry-maxtimeout 300000
+        - npm ci
+        - npm run convert
+    build:
+      commands:
+        - npm run build
+        - node tests/test-build-output.mjs
+  artifacts:
+    baseDirectory: dist
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - node_modules/**/*
+      - .astro/**/*
