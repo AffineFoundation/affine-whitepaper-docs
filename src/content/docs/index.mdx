@@ -2,25 +2,6 @@
 title: "1. Abstract"
 ---
 
-*Version: April 2026. All data, benchmarks, and system specifications reflect the state of the Affine network as of this date.*
+*Version: December 2026.*
 
-Affine is a decentralized evaluation and training system built on Bittensor whose central thesis is that the next leap in agentic capability comes not from scaling pretraining alone, but from **reinforcement-learning post-training inside Affine's own purpose-built environments**. Static benchmarks are structurally inadequate for this goal:
-
-- **Fixed task sets** that saturate through contamination
-- **Single-turn formats** that miss interactive capabilities
-- **One-off scripts** that do not scale to training loops
-
-Affine inverts this paradigm — the same renewable environment suite that scores miners also serves as the RL training substrate that produces them, and the on-chain incentive structure drives every miner to post-train on these environments until its model surpasses the base Qwen3-32B on every capability axis. The system delivers four core contributions:
-
-1. **Scoring mechanism.** A scoring mechanism built on Pareto dominance filtering, ELO-based temporal ratings, and a dual-signal anti-copy detector that incentivizes genuine model improvement on the Bittensor network.
-
-2. **Container-orchestration infrastructure.** A container-orchestration infrastructure (Affinetes) that packages environments as reproducible Docker services with SSH-tunneled communication and multi-instance load balancing — separating environment execution from GPU inference.
-
-3. **A family of six evaluation environments:** software engineering (SWE-Infinite), browser-grounded web interaction (LiveWeb Arena), memory management (MemoryGym), tool-mediated planning (NavWorld), strategic game-playing (OpenSpiel), and distributional alignment (DISTILL) — each with renewable task generation, deterministic seeding, and structured reward signals suitable for reinforcement learning.
-
-4. **Empirical evidence that the post-training loop works.** Affine-trained miner models outperform the base Qwen3-32B on external benchmarks not used in training:
-   - +14% on MCP-Bench task completion
-   - +51% on MemoryAgentBench F1
-   - Non-trivial SWE-rebench scores (12.28) where the base model achieves zero
-
-> **Why this matters:** All environments provide deterministic seeding, structured reward signals (ranging from dense per-step shaping to per-task binary outcomes), and renewable task generation — serving simultaneously as evaluation benchmarks and as reinforcement-learning training substrates that have already pushed miner models past the base model.
+Affine is an open evaluation platform focused on high-quality RL environments. where open-source models by miner contributors are incentivized to outperform "existing ones" (@Wajahat please change this to a proper term. It refers to existing open-source models like Qwen) in real world agentic tasks. The platform empowers the community to break the grip of closed organizations in reasoning progress. The platform can also act as a public mechanism with the ability to verify and reward real incremental improvements. The key value of Affine lies in delivering RL environments and reward signals and helping miners through post training. It allows miners to define capability boundaries and enable them to steer improvement direction. to conduct open competition into a compounding (@Wajahat can replace a new word here) process instead of a single benchmark race. The platform's ecosystem generates robust and multidimensional environments where miners conduct RL post-training against the unified suite. In the next process, a multi-dimensional layer verifies and incentivizes the individual performance of each model using exploit-resistant mechanism. Deployed as Bittensor Subnet 120, the settlement pipeline — noise-adjusted Pareto filtering, cross-round ELO, geometric-mean aggregation, and floored normalization — allocates on-chain emissions in proportion to verified capability gains. A dual signal anti-copy layer that combines hidden state norms with top-$k$ logprob similarity, economically blocks replication, pushing for genuine training instead. The consistent initial evidence shows that these three independently trained models have outperformed the unmodified Qwen3-32B base on external benchmarks.
