@@ -75,6 +75,13 @@ h2, h3, h4 {
   letter-spacing: -0.01em;
 }
 
+/* Tighter h3 for paragraph subsection headings */
+.sl-markdown-content h3 {
+  font-size: 1.15rem !important;
+  margin-top: 1.75rem !important;
+  margin-bottom: 0.5rem !important;
+}
+
 code, pre {
   font-family: var(--sl-font-system-mono);
 }
@@ -112,7 +119,7 @@ a.site-title.sl-flex {
 
 /* === Sidebar Styling === */
 
-/* Sidebar group labels — Space Mono, uppercase, spaced */
+/* Sidebar group labels — Space Mono, uppercase, spaced (original styling) */
 .sidebar summary,
 .sidebar h2 {
   font-family: 'Space Mono', 'IBM Plex Mono', monospace !important;
@@ -121,6 +128,15 @@ a.site-title.sl-flex {
   letter-spacing: 0.08em !important;
   text-transform: uppercase !important;
   color: #999999 !important;
+}
+
+/* Top-level bare links (Abstract / Roadmap / Conclusion) — match group-label .large style
+   Only override font-family / letter-spacing / text-transform so Starlight's native .large
+   size and weight come through (big, bold, white). */
+ul.top-level > li > a.large {
+  font-family: 'Space Mono', 'IBM Plex Mono', monospace !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
 }
 
 /* Sidebar nav links — Space Grotesk, light */
@@ -145,6 +161,12 @@ a.site-title.sl-flex {
   background-color: rgba(90, 200, 250, 0.12) !important;
   color: #5AC8FA !important;
   font-weight: 500 !important;
+}
+
+/* Top-level bare link active state — keep blue highlight color */
+ul.top-level > li > a[aria-current="page"],
+ul.top-level > li > a[aria-current="page"] span {
+  color: #5AC8FA !important;
 }
 
 /* === Content Area === */

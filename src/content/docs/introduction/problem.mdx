@@ -1,0 +1,14 @@
+---
+title: "2.2 Problem"
+---
+
+In today's AI stack, reinforcement learning applied after pretraining has become one of the most important techniques for advancing model reasoning, coding ability, and general problem-solving. From AlphaGo's self-play to DeepSeek R1's pure-RL pipeline, which raised AIME pass rates from 15.6% to 71.0%,[^1] models get better by training against verifiable rewards in structured environments, but not by scaling pretraining data alone.[^2] The techniques and infrastructure behind these results, however, remain locked inside a few closed organizations — OpenAI, Anthropic, Google DeepMind among them.
+
+That is the core problem for the open ecosystem. Open-source projects receive pretrained checkpoints and occasionally distilled weights, but not the post-training loop that actually produced the reasoning capability. The loop is consist of the RL pipeline, the environment suite, the reward signals. The gap between open and closed models is no longer about architecture or pretraining data. It is about who controls the post-training process and the environments that decide what "better" means.
+
+Open-source evaluation does not help. Static benchmarks saturate and leak into training data. Leaderboards rank results but cannot distinguish a genuine improvement from possible random noise and close-copy of previous leader. As things stand, the open ecosystem has no mechanism to verify real increments, settle them economically, or compound them across rounds. Evetually it leads to discouragement and loss of individual contributors because of mis-judgement of real values of true improvements.
+
+Affine exists to supply that missing layer: a public settlement mechanism that incentivizes verified increments, rejects noise and copying or single-environment specialization, and keeps producing signal long after individual benchmarks have saturated.
+
+[^1]: Guo et al., *DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning*, Nature (2025); arXiv:2501.12948.
+[^2]: For a survey of RL techniques driving reasoning gains across the o-series, Claude, DeepSeek R1, and Qwen families, see *Toward Large Reasoning Models: A Survey of Reinforced Reasoning with Large Language Models* (2025).

@@ -23,44 +23,21 @@ const DOCS_DIR = join(ROOT, 'src', 'content', 'docs');
 // ──────────────────────────────────────────────────────────────────────────────
 
 const FILE_MAP = {
-  '01-abstract/1.0-abstract.md':                       'index.mdx',
-  '02-introduction/2.0-introduction.md':               'introduction.mdx',
-  '03-mechanism/3.1-system-participants-and-roles.md':  'mechanism/system-participants.mdx',
-  '03-mechanism/3.2-task-lifecycle.md':                 'mechanism/task-lifecycle.mdx',
-  '03-mechanism/3.3-evaluation-loop-and-sampling.md':   'mechanism/evaluation-loop.mdx',
-  '03-mechanism/3.6-design-rationale.md':               'mechanism/design-rationale.mdx',
-  '04-architecture/4.1-architectural-overview.md':      'architecture/overview.mdx',
-  '04-architecture/4.2-environment-layer-affinetes.md': 'architecture/affinetes.mdx',
-  '04-architecture/4.3-inference-layer.md':             'architecture/inference-layer.mdx',
-  '04-architecture/4.4-openenv-protocol.md':            'architecture/openenv-protocol.mdx',
-  '04-architecture/4.5-logprob-collection.md':          'architecture/logprob-collection.mdx',
-  '04-architecture/4.6-execution-flow.md':              'architecture/execution-flow.mdx',
-  '04-architecture/4.7-scalability-and-reproducibility.md': 'architecture/scalability.mdx',
-  '05-environments/5.0-environment-overview.md':        'environments/overview.mdx',
-  '05-environments/5.1-swe-infinite.md':                'environments/swe-infinite.mdx',
-  '05-environments/5.2-liveweb-arena.md':               'environments/liveweb-arena.mdx',
-  '05-environments/5.3-memorygym.md':                   'environments/memorygym.mdx',
-  '05-environments/5.4-navworld-qqr.md':                'environments/navworld.mdx',
-  '05-environments/5.5-game-openspiel.md':              'environments/openspiel.mdx',
-  '05-environments/5.6-distill.md':                     'environments/distill.mdx',
-  '06-scoring/6.1-scoring-pipeline.md':                 'scoring/scoring-pipeline.mdx',
-  '06-scoring/6.2-anti-plagiarism.md':                  'scoring/anti-plagiarism.mdx',
-  '07-mining-tutorial/7.1-miner-workflow.md':           'mining-tutorial/miner-workflow.mdx',
-  '07-mining-tutorial/7.2-training-philosophy.md':      'mining-tutorial/training-philosophy.mdx',
-  '08-training/8.1-distill-pipeline.md':                'training/distill-pipeline.mdx',
-  '08-training/8.2-reward-signal-design.md':            'training/reward-signal.mdx',
-  '09-benchmarks/9.0-benchmark-overview.md':            'benchmarks/overview.mdx',
-  '09-benchmarks/9.1-stable-benchmarks.md':             'benchmarks/stable-benchmarks.mdx',
-  '09-benchmarks/9.2-snapshot-benchmarks.md':           'benchmarks/snapshot-benchmarks.mdx',
-  '09-benchmarks/9.3-code-generation.md':               'benchmarks/code-generation.mdx',
-  '09-benchmarks/9.4-interpretation.md':                'benchmarks/interpretation.mdx',
-  '10-roadmap/10.0-roadmap-overview.md':                'roadmap/overview.mdx',
-  '10-roadmap/10.1-model-architecture-scaling.md':      'roadmap/model-scaling.mdx',
-  '10-roadmap/10.2-distillation-evolution.md':          'roadmap/distillation-evolution.mdx',
-  '10-roadmap/10.3-inference-independence.md':          'roadmap/inference-independence.mdx',
-  '10-roadmap/10.4-environment-expansion.md':           'roadmap/environment-expansion.mdx',
-  '10-roadmap/10.5-scoring-refinement.md':              'roadmap/scoring-refinement.mdx',
-  '10-roadmap/10.6-conclusion.md':                      'roadmap/conclusion.mdx',
+  '01-abstract/1.0-abstract.md':                'index.mdx',
+  '02-introduction/2.1-vision.md':              'introduction/vision.mdx',
+  '02-introduction/2.2-problem.md':             'introduction/problem.mdx',
+  '02-introduction/2.3-affine-solution.md':     'introduction/solution.mdx',
+  '03-mechanism/3.1-participants.md':           'mechanism/participants.mdx',
+  '03-mechanism/3.2-scoring.md':                'mechanism/scoring.mdx',
+  '04-system-design/4.1-architecture.md':       'system-design/architecture.mdx',
+  '04-system-design/4.2-affinetes.md':          'system-design/affinetes.mdx',
+  '04-system-design/4.3-inference-layer.md':    'system-design/inference-layer.mdx',
+  '05-environments/5.1-design-criteria.md':     'environments/design-criteria.mdx',
+  '05-environments/5.2-task-renewal.md':        'environments/task-renewal.mdx',
+  '05-environments/5.3-environment-suite.md':   'environments/suite.mdx',
+  '05-environments/5.4-training-interface.md':  'environments/training-interface.mdx',
+  '06-roadmap.md':                              'roadmap.mdx',
+  '07-conclusion.md':                           'conclusion.mdx',
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -69,53 +46,24 @@ const FILE_MAP = {
 
 const SECTION_SLUGS = {
   '1':    '/',
-  '1.0':  '/',
-  '2':    '/introduction/',
-  '2.0':  '/introduction/',
-  '3':    '/mechanism/system-participants/',
-  '3.1':  '/mechanism/system-participants/',
-  '3.2':  '/mechanism/task-lifecycle/',
-  '3.3':  '/mechanism/evaluation-loop/',
-  '3.6':  '/mechanism/design-rationale/',
-  '4':    '/architecture/overview/',
-  '4.1':  '/architecture/overview/',
-  '4.2':  '/architecture/affinetes/',
-  '4.3':  '/architecture/inference-layer/',
-  '4.4':  '/architecture/openenv-protocol/',
-  '4.5':  '/architecture/logprob-collection/',
-  '4.6':  '/architecture/execution-flow/',
-  '4.7':  '/architecture/scalability/',
-  '5':    '/environments/overview/',
-  '5.0':  '/environments/overview/',
-  '5.1':  '/environments/swe-infinite/',
-  '5.2':  '/environments/liveweb-arena/',
-  '5.3':  '/environments/memorygym/',
-  '5.4':  '/environments/navworld/',
-  '5.5':  '/environments/openspiel/',
-  '5.6':  '/environments/distill/',
-  '6':    '/scoring/scoring-pipeline/',
-  '6.1':  '/scoring/scoring-pipeline/',
-  '6.2':  '/scoring/anti-plagiarism/',
-  '7':    '/mining-tutorial/miner-workflow/',
-  '7.1':  '/mining-tutorial/miner-workflow/',
-  '7.2':  '/mining-tutorial/training-philosophy/',
-  '8':    '/training/distill-pipeline/',
-  '8.1':  '/training/distill-pipeline/',
-  '8.2':  '/training/reward-signal/',
-  '9':    '/benchmarks/overview/',
-  '9.0':  '/benchmarks/overview/',
-  '9.1':  '/benchmarks/stable-benchmarks/',
-  '9.2':  '/benchmarks/snapshot-benchmarks/',
-  '9.3':  '/benchmarks/code-generation/',
-  '9.4':  '/benchmarks/interpretation/',
-  '10':   '/roadmap/overview/',
-  '10.0': '/roadmap/overview/',
-  '10.1': '/roadmap/model-scaling/',
-  '10.2': '/roadmap/distillation-evolution/',
-  '10.3': '/roadmap/inference-independence/',
-  '10.4': '/roadmap/environment-expansion/',
-  '10.5': '/roadmap/scoring-refinement/',
-  '10.6': '/roadmap/conclusion/',
+  '2':    '/introduction/vision/',
+  '2.1':  '/introduction/vision/',
+  '2.2':  '/introduction/problem/',
+  '2.3':  '/introduction/solution/',
+  '3':    '/mechanism/participants/',
+  '3.1':  '/mechanism/participants/',
+  '3.2':  '/mechanism/scoring/',
+  '4':    '/system-design/architecture/',
+  '4.1':  '/system-design/architecture/',
+  '4.2':  '/system-design/affinetes/',
+  '4.3':  '/system-design/inference-layer/',
+  '5':    '/environments/design-criteria/',
+  '5.1':  '/environments/design-criteria/',
+  '5.2':  '/environments/task-renewal/',
+  '5.3':  '/environments/suite/',
+  '5.4':  '/environments/training-interface/',
+  '6':    '/roadmap/',
+  '7':    '/conclusion/',
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -154,9 +102,16 @@ function convertFile(relPath) {
     return '```mermaid\n' + fixed + '```';
   });
 
-  // 3. Convert cross-references: §X.Y → links
-  // Match §X.Y patterns (with or without parentheses, in various contexts)
-  content = content.replace(/§(\d+(?:\.\d+)?)/g, (match, num) => {
+  // 3a. Rewrite existing markdown links of form [§X.Y](any-url) → [§X.Y](new-slug)
+  content = content.replace(/\[§(\d+(?:\.\d+)?)\]\(([^)]+)\)/g, (match, num) => {
+    const slug = SECTION_SLUGS[num];
+    if (slug) return `[§${num}](${slug})`;
+    console.warn(`  WARNING: No slug for cross-reference §${num} in ${relPath}`);
+    return match;
+  });
+
+  // 3b. Wrap bare §X.Y (not already inside a markdown link) in a link
+  content = content.replace(/(?<!\[)§(\d+(?:\.\d+)?)(?!\])/g, (match, num) => {
     const slug = SECTION_SLUGS[num];
     if (slug) return `[§${num}](${slug})`;
     console.warn(`  WARNING: No slug for cross-reference §${num} in ${relPath}`);
@@ -172,8 +127,14 @@ function convertFile(relPath) {
     return match;
   });
 
+  // 4b. Escape { and } inside block math ($$...$$) — may span multiple lines
+  content = content.replace(/\$\$([\s\S]+?)\$\$/g, (match, expr) => {
+    const escaped = expr.replace(/\{/g, '\\{').replace(/\}/g, '\\}');
+    return '$$' + escaped + '$$';
+  });
+
   // 5. Escape JSX-problematic characters outside code blocks
-  // MDX treats < as JSX tags. We need to escape bare < in prose (not in code blocks).
+  // MDX treats < as JSX tags, and {foo} as JS expressions. Escape both in prose.
   const lines = content.split('\n');
   let inCodeBlock = false;
   for (let i = 0; i < lines.length; i++) {
@@ -182,9 +143,13 @@ function convertFile(relPath) {
       continue;
     }
     if (!inCodeBlock) {
-      // Escape < that is followed by a digit, =, or space (not HTML tags or mermaid)
-      // but not inside inline code backticks
+      // Escape < followed by digit, =, space (not HTML tags) — but not inside inline code backticks
       lines[i] = lines[i].replace(/(?<!`[^`]*)<(?=[\d=\s])/g, '&lt;');
+      // Escape { and } inside $...$ math expressions so MDX does not treat them as JSX
+      lines[i] = lines[i].replace(/\$([^$\n]+)\$/g, (match, expr) => {
+        const escaped = expr.replace(/\{/g, '\\{').replace(/\}/g, '\\}');
+        return '$' + escaped + '$';
+      });
     }
   }
   content = lines.join('\n');

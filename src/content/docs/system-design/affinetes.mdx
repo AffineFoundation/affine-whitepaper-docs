@@ -1,0 +1,33 @@
+---
+title: "4.2 Affinetes"
+---
+
+import Table from '../../../components/Table.astro';
+
+Affinetes turns environment business logic into a deployable evaluation service. The design goal is zero infrastructure burden on authors: an author writes `env.py` containing task-generation logic and a scoring function, and Affinetes handles image build, HTTP server injection, deployment, networking, health checks, and cleanup. This matters because environments are the asset ([§5](/environments/design-criteria/)), and the cost of producing a new one scales inversely with how much scaffolding the author has to deal with.
+
+### Two Environment Styles
+
+The function-based style defines an `Actor` class with async methods; Affinetes auto-exposes every public method as an HTTP endpoint using its injected server. The HTTP-native style lets the author bring their own FastAPI application and bypass injection; Affinetes detects this automatically and proxies straight through. Most environments use the function-based style because it is strictly less code; the HTTP-native style exists for environments that need streaming, websockets, or custom middleware.
+
+### Three Deployment Modes
+
+The same environment runs in any of three modes without code changes. **Docker** (default) runs environments as containers on Affinetes-managed hosts, with SSH-tunneled networking so instances never need public IPs. **URL** runs environments as an HTTP service wherever the operator wants — managed cloud, existing Kubernetes, on-prem — with Affinetes acting as a pure HTTP proxy. **Basilica** runs environments as per-session Kubernetes pods created and destroyed per evaluation session, useful for environments with heavy isolation or state-cleanup requirements. Deployment mode is a configuration flag, not a property of the environment code.
+
+### Multi-Instance Scaling
+
+The coordination layer can run an environment in multiple replicas, with Affinetes placing them behind an instance pool and load balancer. Horizontal scaling is transparent to calling code — the coordination layer addresses an environment by name, not by instance — which is what lets environments with heterogeneous load profiles (a task that averages 30 seconds versus one that hits 5 minutes in the worst case) maintain consistent latency at the evaluation layer.
+
+---
+
+**Table 4.2.** Three deployment modes.
+
+<Table>
+
+| Mode | Backend | Networking | Use case |
+|---|---|---|---|
+| **Docker** (default) | Affinetes-managed Docker hosts | SSH-tunneled; no public IPs | Most environments |
+| **URL** | Externally deployed HTTP service | Direct HTTPS proxy | Environments running elsewhere (managed cloud, existing infra) |
+| **Basilica** | Per-session Kubernetes pods | Per-session scheduling | Heavy isolation / fresh state per task |
+
+</Table>
