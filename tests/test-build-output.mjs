@@ -61,7 +61,7 @@ if (!existsSync(DIST)) {
 // Test: Page count
 // ---------------------------------------------------------------------------
 const htmlFiles = findFiles(DIST, '.html');
-const MIN_PAGES = 90; // 38 whitepaper + 56 subnet - some tolerance
+const MIN_PAGES = 65; // 15 whitepaper + ~50 subnet pages (with tolerance)
 
 console.log(`Found ${htmlFiles.length} HTML pages in dist/`);
 assert(
@@ -74,16 +74,23 @@ assert(
 // Test: Key pages exist
 // ---------------------------------------------------------------------------
 const KEY_PAGES = [
-  'index.html',                              // Whitepaper abstract
-  'introduction/index.html',                 // Whitepaper intro
-  'mechanism/task-lifecycle/index.html',      // Whitepaper mechanism
-  'architecture/overview/index.html',         // Whitepaper architecture
-  'environments/overview/index.html',         // Whitepaper environments
-  'scoring/scoring-pipeline/index.html',      // Whitepaper scoring
-  'benchmarks/overview/index.html',           // Whitepaper benchmarks
-  'roadmap/conclusion/index.html',            // Whitepaper roadmap
-  'subnets/index.html',                      // Subnet docs overview
-  '404.html',                                // Error page
+  'index.html',                                   // §1 Abstract
+  'introduction/vision/index.html',               // §2.1
+  'introduction/problem/index.html',              // §2.2
+  'introduction/solution/index.html',             // §2.3
+  'mechanism/participants/index.html',            // §3.1
+  'mechanism/scoring/index.html',                 // §3.2
+  'system-design/architecture/index.html',        // §4.1
+  'system-design/affinetes/index.html',           // §4.2
+  'system-design/inference-layer/index.html',     // §4.3
+  'environments/design-criteria/index.html',      // §5.1
+  'environments/task-renewal/index.html',         // §5.2
+  'environments/suite/index.html',                // §5.3
+  'environments/training-interface/index.html',   // §5.4
+  'roadmap/index.html',                           // §6
+  'conclusion/index.html',                        // §7
+  'subnets/index.html',                           // Subnet docs overview
+  '404.html',                                     // Error page
 ];
 
 console.log('\nChecking key pages...');
